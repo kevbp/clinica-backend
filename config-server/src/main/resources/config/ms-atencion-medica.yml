@@ -1,0 +1,14 @@
+server:
+  port: 8089
+
+spring:
+  cloud:
+    openfeign:
+      httpclient:
+        hc5:
+          enabled: true
+  data:
+    redis:
+      host: redis-clinica
+      port: 6379
+      password: ${REDIS_PASSWORD:change-me-redis}

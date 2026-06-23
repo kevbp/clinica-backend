@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash test-e2e.sh)",
+      "PowerShell(winget install *)",
+      "PowerShell($url = \"https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe\"; $dest = \"C:\\\\Program Files\\\\Git\\\\usr\\\\bin\\\\jq.exe\"; Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing; Write-Host \"jq instalado en $dest\")",
+      "PowerShell(New-Item *)",
+      "PowerShell(docker exec ms-historias-clinicas *)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8087/especialidades\" -Method POST -ContentType \"application/json\" -Body '{\"nombre\":\"Test\",\"descripcion\":\"Test\"}' -UseBasicParsing 2>&1 | Select-Object StatusCode, Content)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8080/actuator\" -UseBasicParsing 2>&1 | Select-Object -ExpandProperty Content)",
+      "Bash(docker exec api-gateway *)",
+      "Bash(curl -s http://localhost:8761/eureka/apps)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8761/eureka/apps\" -Headers @{Accept=\"application/json\"} -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json | Select-Object -ExpandProperty applications | Select-Object -ExpandProperty application | ForEach-Object { $_.name })",
+      "Bash(curl *)",
+      "Bash(python3 -c ' *)",
+      "Bash(./node_modules/.bin/tailwindcss init *)"
+    ]
+  }
+}

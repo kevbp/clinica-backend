@@ -1,0 +1,89 @@
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: optional:configserver:http://config-server:8888
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Sin issuer-uri: valida firma pero no el issuer claim (necesario por diferencia localhost/docker)
+          jwk-set-uri: http://keycloak-clinica:8080/realms/clinica-interno/protocol/openid-connect/certs
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: ms-personal
+              uri: lb://ms-personal
+              predicates:
+                - Path=/api/personal/**
+              filters:
+                - StripPrefix=2
+            - id: ms-horarios
+              uri: lb://ms-horarios
+              predicates:
+                - Path=/api/horarios/**
+              filters:
+                - StripPrefix=2
+            - id: ms-pacientes
+              uri: lb://ms-pacientes
+              predicates:
+                - Path=/api/pacientes/**
+              filters:
+                - StripPrefix=2
+            - id: ms-farmacia
+              uri: lb://ms-farmacia
+              predicates:
+                - Path=/api/farmacia/**
+              filters:
+                - StripPrefix=2
+            - id: ms-laboratorio
+              uri: lb://ms-laboratorio
+              predicates:
+                - Path=/api/laboratorio/**
+              filters:
+                - StripPrefix=2
+            - id: ms-historias-clinicas
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/api/historias/**
+              filters:
+                - StripPrefix=2
+            - id: ms-citas
+              uri: lb://ms-citas
+              predicates:
+                - Path=/api/citas/**
+              filters:
+                - StripPrefix=2
+            - id: ms-atencion-medica
+              uri: lb://ms-atencion-medica
+              predicates:
+                - Path=/api/atenciones/**
+              filters:
+                - StripPrefix=2
+            - id: ms-caja
+              uri: lb://ms-caja
+              predicates:
+                - Path=/api/caja/**
+              filters:
+                - StripPrefix=2
+
+server:
+  port: 8080
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

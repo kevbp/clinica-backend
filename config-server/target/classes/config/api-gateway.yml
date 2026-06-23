@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: ms-personal
+          uri: lb://ms-personal
+          predicates:
+            - Path=/api/personal/**
+        - id: ms-horarios
+          uri: lb://ms-horarios
+          predicates:
+            - Path=/api/horarios/**
+        - id: ms-pacientes
+          uri: lb://ms-pacientes
+          predicates:
+            - Path=/api/pacientes/**
+        - id: ms-farmacia
+          uri: lb://ms-farmacia
+          predicates:
+            - Path=/api/farmacia/**
+        - id: ms-laboratorio
+          uri: lb://ms-laboratorio
+          predicates:
+            - Path=/api/laboratorio/**
+        - id: ms-historias-clinicas
+          uri: lb://ms-historias-clinicas
+          predicates:
+            - Path=/api/historias/**
+        - id: ms-citas
+          uri: lb://ms-citas
+          predicates:
+            - Path=/api/citas/**
+        - id: ms-atencion-medica
+          uri: lb://ms-atencion-medica
+          predicates:
+            - Path=/api/atenciones/**
+        - id: ms-caja
+          uri: lb://ms-caja
+          predicates:
+            - Path=/api/caja/**
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak-clinica:8080/realms/clinica
+          # jwk-set-uri explícito evita conexión a Keycloak en el arranque del gateway
+          jwk-set-uri: http://keycloak-clinica:8080/realms/clinica/protocol/openid-connect/certs
