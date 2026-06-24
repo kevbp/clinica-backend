@@ -48,6 +48,17 @@ public class CitaMedicaService {
         return toResponse(findById(id));
     }
 
+    // ---- Listado con filtros ----
+
+    @Transactional(readOnly = true)
+    public List<CitaMedicaResponseDTO> listar(Long idPaciente, Long idPersonal,
+                                               EstadoCita estado, LocalDate fecha) {
+        LocalDateTime inicio = fecha != null ? fecha.atStartOfDay() : null;
+        LocalDateTime fin    = fecha != null ? fecha.plusDays(1).atStartOfDay() : null;
+        return citaRepository.buscarConFiltros(idPaciente, idPersonal, estado, inicio, fin)
+                .stream().map(this::toResponse).toList();
+    }
+
     // ---- Lazy Evaluation ----
 
     @Transactional(readOnly = true)

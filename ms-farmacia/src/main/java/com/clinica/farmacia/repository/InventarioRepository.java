@@ -23,6 +23,9 @@ public interface InventarioRepository extends JpaRepository<Inventario, Long> {
             @Param("idMedicamento") Long idMedicamento,
             @Param("hoy") LocalDate hoy);
 
+    @Query("SELECT i FROM Inventario i JOIN i.lote l WHERE l.medicamento.id = :idMedicamento")
+    List<Inventario> findByMedicamentoId(@Param("idMedicamento") Long idMedicamento);
+
     // Stock total vigente (lotes no vencidos), incluye lotes con cantidad = 0 en la suma.
     @Query("""
             SELECT COALESCE(SUM(i.cantidadDisponible), 0)

@@ -4,6 +4,8 @@ import com.clinica.personal.dto.PersonalMedicoRequestDTO;
 import com.clinica.personal.dto.PersonalMedicoResponseDTO;
 import com.clinica.personal.dto.PersonalRequestDTO;
 import com.clinica.personal.dto.PersonalResponseDTO;
+import com.clinica.personal.dto.PersonalUpdateRequestDTO;
+import com.clinica.personal.model.TipoPersonal;
 import com.clinica.personal.service.PersonalService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @Tag(name = "Personal", description = "Gestión del talento humano de la clínica")
 @RestController
@@ -77,6 +81,90 @@ public class PersonalController {
                     example = "550e8400-e29b-41d4-a716-446655440000", required = true)
             @RequestParam String keycloakUserId) {
         return ResponseEntity.ok(personalService.buscarPorKeycloakUserId(keycloakUserId));
+    }
+
+    @Operation(summary = "Actualizar datos del personal",
+            description = "Actualización parcial. Solo se modifican los campos no nulos enviados en el body.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Personal actualizado",
+                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Personal no encontrado"),
+            @ApiResponse(responseCode = "409", description = "Documento de identidad ya registrado en otro personal")
+    })
+    @PatchMapping("/personal/{id}")
+    public ResponseEntity<PersonalResponseDTO> actualizar(
+            @Parameter(description = "ID interno del personal", example = "5", required = true)
+            @PathVariable Long id,
+            @RequestBody PersonalUpdateRequestDTO request) {
+        return ResponseEntity.ok(personalService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Listar todos los médicos",
+            description = "Retorna todos los médicos con su colegiatura y especialidad. Útil para el selector de agendamiento.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de médicos")
+    })
+    @GetMapping("/personal-medico")
+    public ResponseEntity<List<PersonalMedicoResponseDTO>> listarMedicos() {
+        return ResponseEntity.ok(personalService.listarMedicos());
+    }
+
+    @Operation(summary = "Listar personal con filtros opcionales",
+            description = "Retorna todo el personal. Acepta filtros opcionales: nombre (búsqueda parcial en nombres+apellidos), tipoPersonal y estadoActivo.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de personal")
+    })
+    @GetMapping("/personal/todos")
+    public ResponseEntity<List<PersonalResponseDTO>> listar(
+            @Parameter(description = "Búsqueda parcial en nombres y apellidos", example = "García")
+            @RequestParam(required = false) String nombre,
+            @Parameter(description = "Filtrar por tipo: MEDICO, ENFERMERO, ADMINISTRATIVO, etc.")
+            @RequestParam(required = false) TipoPersonal tipoPersonal,
+            @Parameter(description = "Filtrar por estado activo")
+            @RequestParam(required = false) Boolean estadoActivo) {
+        return ResponseEntity.ok(personalService.listar(nombre, tipoPersonal, estadoActivo));
+    }
+
+    @Operation(summary = "Consultar extensión médica",
+            description = "Retorna la colegiatura y especialidad del médico. 404 si el personal no tiene extensión médica.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Extensión médica encontrada",
+                    content = @Content(schema = @Schema(implementation = PersonalMedicoResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "El personal no tiene extensión médica registrada")
+    })
+    @GetMapping("/personal-medico/{id}")
+    public ResponseEntity<PersonalMedicoResponseDTO> obtenerMedico(
+            @Parameter(description = "ID interno del personal", example = "5", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(personalService.obtenerMedico(id));
+    }
+
+    @Operation(summary = "Habilitar personal",
+            description = "Activa el personal para que pueda recibir citas. Idempotente si ya estaba activo.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Personal habilitado",
+                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Personal no encontrado")
+    })
+    @PatchMapping("/personal/{id}/habilitar")
+    public ResponseEntity<PersonalResponseDTO> habilitar(
+            @Parameter(description = "ID interno del personal", example = "5", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(personalService.cambiarEstado(id, true));
+    }
+
+    @Operation(summary = "Deshabilitar personal",
+            description = "Desactiva el personal impidiendo nuevos agendamientos. Idempotente si ya estaba inactivo.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Personal deshabilitado",
+                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Personal no encontrado")
+    })
+    @PatchMapping("/personal/{id}/deshabilitar")
+    public ResponseEntity<PersonalResponseDTO> deshabilitar(
+            @Parameter(description = "ID interno del personal", example = "5", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(personalService.cambiarEstado(id, false));
     }
 
     @Operation(summary = "Registrar extensión médica",

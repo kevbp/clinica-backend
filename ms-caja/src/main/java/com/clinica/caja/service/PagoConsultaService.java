@@ -35,6 +35,20 @@ public class PagoConsultaService {
     private final CitasFeignClient          citasClient;
     private final RabbitTemplate            rabbitTemplate;
 
+    @Transactional(readOnly = true)
+    public PagoConsultaResponseDTO obtenerPorId(Long id) {
+        return toResponse(pagoRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "PagoConsulta no encontrado con id: " + id)));
+    }
+
+    @Transactional(readOnly = true)
+    public PagoConsultaResponseDTO obtenerPorCita(Long idCita) {
+        return toResponse(pagoRepository.findByIdCita(idCita)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "No existe pago de consulta para la cita: " + idCita)));
+    }
+
     @Transactional
     public PagoConsultaResponseDTO crear(PagoConsultaRequestDTO request) {
         if (pagoRepository.findByIdCita(request.getIdCita()).isPresent()) {

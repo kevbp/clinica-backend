@@ -4,6 +4,7 @@ import com.clinica.pacientes.dto.AntecedenteClinicoRequestDTO;
 import com.clinica.pacientes.dto.AntecedenteClinicoResponseDTO;
 import com.clinica.pacientes.dto.PacienteRequestDTO;
 import com.clinica.pacientes.dto.PacienteResponseDTO;
+import com.clinica.pacientes.dto.PacienteUpdateRequestDTO;
 import com.clinica.pacientes.model.AntecedenteClinico;
 import com.clinica.pacientes.model.Paciente;
 import com.clinica.pacientes.repository.AntecedenteClinicoRepository;
@@ -32,6 +33,36 @@ public class PacienteService {
         paciente.setDireccion(request.getDireccion());
         paciente.setContacto(request.getContacto());
         return toResponse(pacienteRepository.save(paciente));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PacienteResponseDTO> buscar(String q) {
+        return pacienteRepository.buscar(q).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public PacienteResponseDTO actualizar(Long id, PacienteUpdateRequestDTO request) {
+        Paciente paciente = findById(id);
+        if (request.getNombres()   != null) paciente.setNombres(request.getNombres());
+        if (request.getApellidos() != null) paciente.setApellidos(request.getApellidos());
+        if (request.getDireccion() != null) paciente.setDireccion(request.getDireccion());
+        if (request.getContacto()  != null) paciente.setContacto(request.getContacto());
+        return toResponse(pacienteRepository.save(paciente));
+    }
+
+    @Transactional
+    public void eliminarAntecedente(Long idPaciente, Long idAntecedente) {
+        findById(idPaciente);
+        AntecedenteClinico antecedente = antecedenteClinicoRepository.findById(idAntecedente)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Antecedente no encontrado con id: " + idAntecedente));
+        if (!antecedente.getPaciente().getId().equals(idPaciente)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El antecedente no pertenece al paciente indicado.");
+        }
+        antecedenteClinicoRepository.delete(antecedente);
     }
 
     @Transactional(readOnly = true)

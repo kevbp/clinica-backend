@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class PersonalService {
@@ -38,6 +40,46 @@ public class PersonalService {
     public PersonalResponseDTO obtenerPorId(Long id) {
         Personal personal = findById(id);
         return toResponse(personal);
+    }
+
+    @Transactional
+    public PersonalResponseDTO actualizar(Long id, PersonalUpdateRequestDTO request) {
+        Personal personal = findById(id);
+        if (request.getNombres()            != null) personal.setNombres(request.getNombres());
+        if (request.getApellidos()          != null) personal.setApellidos(request.getApellidos());
+        if (request.getDocumentoIdentidad() != null) personal.setDocumentoIdentidad(request.getDocumentoIdentidad());
+        if (request.getContacto()           != null) personal.setContacto(request.getContacto());
+        if (request.getFechaIngreso()       != null) personal.setFechaIngreso(request.getFechaIngreso());
+        return toResponse(personalRepository.save(personal));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PersonalMedicoResponseDTO> listarMedicos() {
+        return personalMedicoRepository.findAll().stream()
+                .map(this::toMedicoResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PersonalResponseDTO> listar(String nombre, TipoPersonal tipoPersonal, Boolean estadoActivo) {
+        return personalRepository.buscarConFiltros(nombre, tipoPersonal, estadoActivo).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PersonalMedicoResponseDTO obtenerMedico(Long idPersonal) {
+        return toMedicoResponse(personalMedicoRepository.findByPersonalId(idPersonal)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "No se encontró extensión médica para el personal con id: " + idPersonal)));
+    }
+
+    @Transactional
+    public PersonalResponseDTO cambiarEstado(Long id, boolean activo) {
+        Personal personal = findById(id);
+        personal.setEstadoActivo(activo);
+        return toResponse(personalRepository.save(personal));
     }
 
     @Transactional(readOnly = true)

@@ -2,6 +2,7 @@ package com.clinica.farmacia.controller;
 
 import com.clinica.farmacia.dto.*;
 import com.clinica.farmacia.service.MedicamentoService;
+import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -22,6 +23,18 @@ import org.springframework.web.bind.annotation.*;
 public class MedicamentoController {
 
     private final MedicamentoService medicamentoService;
+
+    @Operation(summary = "Listar / buscar catálogo de medicamentos",
+            description = "Sin parámetros retorna todos los medicamentos. Con `q` filtra por nombre o principio activo (parcial, sin importar mayúsculas).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de medicamentos del catálogo")
+    })
+    @GetMapping
+    public ResponseEntity<List<MedicamentoResponseDTO>> listar(
+            @Parameter(description = "Término de búsqueda: nombre o principio activo", example = "Amoxicilina")
+            @RequestParam(required = false) String q) {
+        return ResponseEntity.ok(medicamentoService.listarCatalogo(q));
+    }
 
     @Operation(summary = "Registrar medicamento",
             description = "Agrega un medicamento al catálogo con su precio de venta")
@@ -78,6 +91,34 @@ public class MedicamentoController {
             @Parameter(description = "ID interno del medicamento", example = "104", required = true)
             @PathVariable Long id) {
         return ResponseEntity.ok(medicamentoService.obtenerDisponibilidad(id));
+    }
+
+    @Operation(summary = "Actualizar medicamento",
+            description = "Actualización parcial. Solo se modifican los campos no nulos. El precio actualizado afecta solo a nuevas proformas (las existentes tienen precio congelado).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Medicamento actualizado",
+                    content = @Content(schema = @Schema(implementation = MedicamentoResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Medicamento no encontrado")
+    })
+    @PatchMapping("/{id}")
+    public ResponseEntity<MedicamentoResponseDTO> actualizar(
+            @Parameter(description = "ID interno del medicamento", example = "104", required = true)
+            @PathVariable Long id,
+            @RequestBody MedicamentoUpdateRequestDTO request) {
+        return ResponseEntity.ok(medicamentoService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Listar lotes de un medicamento",
+            description = "Retorna todos los lotes registrados con su stock actual. Útil para el panel de administración de farmacia.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de lotes"),
+            @ApiResponse(responseCode = "404", description = "Medicamento no encontrado")
+    })
+    @GetMapping("/{id}/lotes")
+    public ResponseEntity<List<LoteResponseDTO>> listarLotes(
+            @Parameter(description = "ID interno del medicamento", example = "104", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(medicamentoService.listarLotes(id));
     }
 
     @Operation(summary = "Agregar lote con stock inicial",

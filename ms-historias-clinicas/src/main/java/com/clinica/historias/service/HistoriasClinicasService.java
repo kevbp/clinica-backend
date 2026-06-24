@@ -120,6 +120,20 @@ public class HistoriasClinicasService {
                 .toList();
     }
 
+    public RecetaResponseDTO obtenerRecetaPorId(String id) {
+        return recetaRepository.findById(id)
+                .map(this::toRecetaResponse)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Receta no encontrada con id: " + id));
+    }
+
+    public OrdenLaboratorioResponseDTO obtenerOrdenPorId(String id) {
+        return ordenRepository.findById(id)
+                .map(this::toOrdenResponse)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Orden de laboratorio no encontrada con id: " + id));
+    }
+
     public AdendaClinicoResponseDTO registrarAdenda(AdendaClinicoRequestDTO request) {
         EpisodioClinico episodio = episodioRepository.findById(request.getIdEpisodioPadre())
                 .orElseThrow(() -> new ResponseStatusException(

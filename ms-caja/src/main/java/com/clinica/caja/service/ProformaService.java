@@ -37,6 +37,20 @@ public class ProformaService {
     private final FarmaciaFeignClient      farmaciaClient;
     private final LaboratorioFeignClient   laboratorioClient;
 
+    @Transactional(readOnly = true)
+    public ProformaResponseDTO obtenerPorId(Long id) {
+        return toResponse(proformaRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Proforma no encontrada con id: " + id)));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProformaResponseDTO> listarPorPaciente(Long idPaciente) {
+        return proformaRepository.findByIdPaciente(idPaciente).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     /**
      * Construye una nueva proforma congelando precios actuales de los ítems prescritos.
      * El precio queda fijo aunque el catálogo cambie después.

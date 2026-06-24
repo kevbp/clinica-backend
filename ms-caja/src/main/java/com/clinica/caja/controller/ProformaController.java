@@ -4,6 +4,7 @@ import com.clinica.caja.dto.ComprobanteResponseDTO;
 import com.clinica.caja.dto.PagarItemsRequestDTO;
 import com.clinica.caja.dto.ProformaResponseDTO;
 import com.clinica.caja.service.ProformaService;
+import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -25,6 +26,32 @@ import org.springframework.web.bind.annotation.*;
 public class ProformaController {
 
     private final ProformaService proformaService;
+
+    @Operation(summary = "Listar proformas de un paciente",
+            description = "Retorna el historial de proformas generadas para un paciente, con sus ítems y estados.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de proformas")
+    })
+    @GetMapping("/paciente/{idPaciente}")
+    public ResponseEntity<List<ProformaResponseDTO>> listarPorPaciente(
+            @Parameter(description = "ID del paciente", example = "42", required = true)
+            @PathVariable Long idPaciente) {
+        return ResponseEntity.ok(proformaService.listarPorPaciente(idPaciente));
+    }
+
+    @Operation(summary = "Consultar proforma por ID",
+            description = "Retorna una proforma existente con sus ítems y estados. Útil para retomar el flujo de cobro.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Proforma encontrada",
+                    content = @Content(schema = @Schema(implementation = ProformaResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Proforma no encontrada")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<ProformaResponseDTO> obtenerPorId(
+            @Parameter(description = "ID de la proforma", example = "5", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(proformaService.obtenerPorId(id));
+    }
 
     @Operation(summary = "Construir proforma con precios congelados",
             description = "Consulta recetas y órdenes de ms-historias-clinicas, obtiene precios " +

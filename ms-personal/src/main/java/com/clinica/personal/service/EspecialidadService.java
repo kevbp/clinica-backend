@@ -33,6 +33,11 @@ public class EspecialidadService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public EspecialidadResponseDTO obtenerPorId(Long id) {
+        return toResponse(obtenerEntidadPorId(id));
+    }
+
     public Especialidad obtenerEntidadPorId(Long id) {
         return especialidadRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(

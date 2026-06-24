@@ -14,12 +14,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class NotaCreditoService {
 
     private final NotaCreditoRepository notaCreditoRepository;
     private final PagoConsultaRepository pagoRepository;
+
+    @Transactional(readOnly = true)
+    public List<NotaCreditoResponseDTO> listarPorPaciente(Long idPaciente) {
+        return notaCreditoRepository.findByIdPaciente(idPaciente).stream()
+                .map(this::toResponse)
+                .toList();
+    }
 
     @Transactional
     public NotaCreditoResponseDTO emitir(NotaCreditoRequestDTO request) {
@@ -40,12 +49,14 @@ public class NotaCreditoService {
         nc.setMotivo(request.getMotivo());
         nc.setEstado(EstadoNotaCredito.DISPONIBLE);
 
-        NotaCredito guardada = notaCreditoRepository.save(nc);
+        return toResponse(notaCreditoRepository.save(nc));
+    }
 
+    private NotaCreditoResponseDTO toResponse(NotaCredito nc) {
         NotaCreditoResponseDTO dto = new NotaCreditoResponseDTO();
-        dto.setId(guardada.getId()); dto.setIdPaciente(guardada.getIdPaciente());
-        dto.setMonto(guardada.getMonto()); dto.setIdPagoConsultaOrigen(guardada.getIdPagoConsultaOrigen());
-        dto.setMotivo(guardada.getMotivo()); dto.setEstado(guardada.getEstado());
+        dto.setId(nc.getId()); dto.setIdPaciente(nc.getIdPaciente());
+        dto.setMonto(nc.getMonto()); dto.setIdPagoConsultaOrigen(nc.getIdPagoConsultaOrigen());
+        dto.setMotivo(nc.getMotivo()); dto.setEstado(nc.getEstado());
         return dto;
     }
 }

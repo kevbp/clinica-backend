@@ -1,6 +1,7 @@
 package com.clinica.citas.controller;
 
 import com.clinica.citas.dto.*;
+import com.clinica.citas.model.EstadoCita;
 import com.clinica.citas.service.CitaMedicaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,6 +27,38 @@ import java.util.List;
 public class CitaMedicaController {
 
     private final CitaMedicaService citaService;
+
+    @Operation(summary = "Listar citas con filtros opcionales",
+            description = "Retorna citas filtradas por paciente, médico, estado y/o fecha. Todos los parámetros son opcionales y combinables.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de citas")
+    })
+    @GetMapping
+    public ResponseEntity<List<CitaMedicaResponseDTO>> listar(
+            @Parameter(description = "Filtrar por ID de paciente", example = "42")
+            @RequestParam(required = false) Long idPaciente,
+            @Parameter(description = "Filtrar por ID del médico", example = "5")
+            @RequestParam(required = false) Long idPersonal,
+            @Parameter(description = "Filtrar por estado: PENDIENTE_PAGO, CONFIRMADA, ATENDIDA, CANCELADA")
+            @RequestParam(required = false) EstadoCita estado,
+            @Parameter(description = "Filtrar por fecha exacta (YYYY-MM-DD)", example = "2024-07-10")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+        return ResponseEntity.ok(citaService.listar(idPaciente, idPersonal, estado, fecha));
+    }
+
+    @Operation(summary = "Agenda del médico para una fecha",
+            description = "Retorna todas las citas (cualquier estado) de un médico en una fecha dada. Uso típico: pantalla de agenda de recepción.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Citas del médico en la fecha")
+    })
+    @GetMapping("/medico/{idPersonal}")
+    public ResponseEntity<List<CitaMedicaResponseDTO>> agendaMedico(
+            @Parameter(description = "ID del médico", example = "5", required = true)
+            @PathVariable Long idPersonal,
+            @Parameter(description = "Fecha de la agenda (YYYY-MM-DD)", example = "2024-07-10", required = true)
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
+        return ResponseEntity.ok(citaService.listar(null, idPersonal, null, fecha));
+    }
 
     @Operation(summary = "Consultar cita por ID",
             description = "Retorna el estado actual de la cita. Consumido por ms-atencion-medica para validar CONFIRMADA al iniciar una atención.")

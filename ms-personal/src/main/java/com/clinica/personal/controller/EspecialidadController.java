@@ -4,6 +4,7 @@ import com.clinica.personal.dto.EspecialidadRequestDTO;
 import com.clinica.personal.dto.EspecialidadResponseDTO;
 import com.clinica.personal.service.EspecialidadService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -43,5 +44,18 @@ public class EspecialidadController {
     @GetMapping
     public ResponseEntity<List<EspecialidadResponseDTO>> listar() {
         return ResponseEntity.ok(especialidadService.listar());
+    }
+
+    @Operation(summary = "Consultar especialidad por ID", description = "Retorna el detalle de una especialidad")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Especialidad encontrada",
+                    content = @Content(schema = @Schema(implementation = EspecialidadResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Especialidad no encontrada")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<EspecialidadResponseDTO> obtenerPorId(
+            @Parameter(description = "ID de la especialidad", example = "1", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(especialidadService.obtenerPorId(id));
     }
 }

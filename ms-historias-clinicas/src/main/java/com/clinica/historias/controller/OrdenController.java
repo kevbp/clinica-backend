@@ -22,6 +22,19 @@ public class OrdenController {
 
     private final HistoriasClinicasService service;
 
+    @Operation(summary = "Obtener orden de laboratorio por ID",
+            description = "Retorna el detalle completo de una orden. Útil para la vista de impresión.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Orden encontrada"),
+            @ApiResponse(responseCode = "404", description = "Orden no encontrada")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<OrdenLaboratorioResponseDTO> obtenerPorId(
+            @Parameter(description = "ID interno de la orden (ObjectId MongoDB)", example = "664a1b2c3d4e5f6a7b8c9d0f", required = true)
+            @PathVariable String id) {
+        return ResponseEntity.ok(service.obtenerOrdenPorId(id));
+    }
+
     @Operation(summary = "Listar órdenes de laboratorio de un paciente",
             description = "Retorna todas las órdenes del paciente con sus líneas de exámenes. " +
                           "Consumido por ms-caja para construir la proforma.")

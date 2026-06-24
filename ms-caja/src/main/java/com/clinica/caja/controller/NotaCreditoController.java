@@ -4,6 +4,7 @@ import com.clinica.caja.dto.NotaCreditoRequestDTO;
 import com.clinica.caja.dto.NotaCreditoResponseDTO;
 import com.clinica.caja.service.NotaCreditoService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -15,6 +16,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Tag(name = "Notas de Crédito",
         description = "Emitidas por ms-citas al cancelar una cita CONFIRMADA dentro de la ventana de 24h")
 @RestController
@@ -23,6 +26,18 @@ import org.springframework.web.bind.annotation.*;
 public class NotaCreditoController {
 
     private final NotaCreditoService notaCreditoService;
+
+    @Operation(summary = "Listar notas de crédito por paciente",
+            description = "Retorna el historial de notas de crédito disponibles para un paciente.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de notas de crédito")
+    })
+    @GetMapping
+    public ResponseEntity<List<NotaCreditoResponseDTO>> listarPorPaciente(
+            @Parameter(description = "ID del paciente", example = "42", required = true)
+            @RequestParam Long idPaciente) {
+        return ResponseEntity.ok(notaCreditoService.listarPorPaciente(idPaciente));
+    }
 
     @Operation(summary = "Emitir nota de crédito",
             description = "Invocado síncronamente por ms-citas al cancelar una cita CONFIRMADA " +

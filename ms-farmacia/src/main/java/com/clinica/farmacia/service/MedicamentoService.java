@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +33,38 @@ public class MedicamentoService {
         m.setPresentacion(request.getPresentacion());
         m.setPrecio(request.getPrecio());
         return toCatalogoResponse(medicamentoRepository.save(m));
+    }
+
+    @Transactional(readOnly = true)
+    public List<MedicamentoResponseDTO> listarCatalogo(String q) {
+        List<Medicamento> result = (q == null || q.isBlank())
+                ? medicamentoRepository.findAll()
+                : medicamentoRepository.findByNombreContainingIgnoreCaseOrPrincipioActivoContainingIgnoreCase(q, q);
+        return result.stream().map(this::toCatalogoResponse).toList();
+    }
+
+    @Transactional
+    public MedicamentoResponseDTO actualizar(Long id, MedicamentoUpdateRequestDTO request) {
+        Medicamento m = findById(id);
+        if (request.getNombre()          != null) m.setNombre(request.getNombre());
+        if (request.getPrincipioActivo() != null) m.setPrincipioActivo(request.getPrincipioActivo());
+        if (request.getPresentacion()    != null) m.setPresentacion(request.getPresentacion());
+        if (request.getPrecio()          != null) m.setPrecio(request.getPrecio());
+        return toCatalogoResponse(medicamentoRepository.save(m));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoteResponseDTO> listarLotes(Long idMedicamento) {
+        findById(idMedicamento);
+        List<Lote> lotes = loteRepository.findByMedicamentoId(idMedicamento);
+        Map<Long, Integer> stockPorLote = inventarioRepository.findByMedicamentoId(idMedicamento).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        inv -> inv.getLote().getId(),
+                        Inventario::getCantidadDisponible,
+                        Integer::sum));
+        return lotes.stream()
+                .map(l -> toLoteResponse(l, stockPorLote.getOrDefault(l.getId(), 0)))
+                .toList();
     }
 
     @Transactional(readOnly = true)

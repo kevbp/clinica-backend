@@ -16,6 +16,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Tag(name = "Consultorios", description = "Gestión de consultorios físicos de la clínica")
 @RestController
 @RequestMapping("/consultorios")
@@ -35,6 +37,15 @@ public class ConsultorioController {
     public ResponseEntity<ConsultorioResponseDTO> crear(
             @Valid @RequestBody ConsultorioRequestDTO request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(consultorioService.crear(request));
+    }
+
+    @Operation(summary = "Listar consultorios", description = "Retorna todos los consultorios registrados")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de consultorios")
+    })
+    @GetMapping
+    public ResponseEntity<List<ConsultorioResponseDTO>> listar() {
+        return ResponseEntity.ok(consultorioService.listar());
     }
 
     @Operation(summary = "Consultar consultorio por ID",

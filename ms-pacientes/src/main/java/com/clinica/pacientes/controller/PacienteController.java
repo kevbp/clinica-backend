@@ -4,6 +4,7 @@ import com.clinica.pacientes.dto.AntecedenteClinicoRequestDTO;
 import com.clinica.pacientes.dto.AntecedenteClinicoResponseDTO;
 import com.clinica.pacientes.dto.PacienteRequestDTO;
 import com.clinica.pacientes.dto.PacienteResponseDTO;
+import com.clinica.pacientes.dto.PacienteUpdateRequestDTO;
 import com.clinica.pacientes.service.PacienteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,6 +28,18 @@ import java.util.List;
 public class PacienteController {
 
     private final PacienteService pacienteService;
+
+    @Operation(summary = "Buscar pacientes",
+            description = "Búsqueda por nombre parcial o número de documento. Retorna lista vacía si no hay coincidencias.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Resultados de búsqueda")
+    })
+    @GetMapping("/buscar")
+    public ResponseEntity<List<PacienteResponseDTO>> buscar(
+            @Parameter(description = "Término de búsqueda (nombre, apellido o documento)", example = "Torres", required = true)
+            @RequestParam String q) {
+        return ResponseEntity.ok(pacienteService.buscar(q));
+    }
 
     @Operation(summary = "Registrar paciente",
             description = "Registra un nuevo paciente en el índice maestro")
@@ -81,6 +94,38 @@ public class PacienteController {
             @Parameter(description = "ID interno del paciente", example = "42", required = true)
             @PathVariable Long id) {
         return ResponseEntity.ok(pacienteService.obtenerAntecedentes(id));
+    }
+
+    @Operation(summary = "Actualizar datos del paciente",
+            description = "Actualización parcial. Solo se modifican los campos presentes en el body (no nulos).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paciente actualizado",
+                    content = @Content(schema = @Schema(implementation = PacienteResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Paciente no encontrado")
+    })
+    @PatchMapping("/{id}")
+    public ResponseEntity<PacienteResponseDTO> actualizar(
+            @Parameter(description = "ID interno del paciente", example = "42", required = true)
+            @PathVariable Long id,
+            @RequestBody PacienteUpdateRequestDTO request) {
+        return ResponseEntity.ok(pacienteService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Eliminar antecedente clínico",
+            description = "Elimina un antecedente clínico del paciente. Valida que el antecedente pertenezca al paciente indicado.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Antecedente eliminado"),
+            @ApiResponse(responseCode = "404", description = "Paciente o antecedente no encontrado"),
+            @ApiResponse(responseCode = "409", description = "El antecedente no pertenece al paciente")
+    })
+    @DeleteMapping("/{id}/antecedentes/{idAntecedente}")
+    public ResponseEntity<Void> eliminarAntecedente(
+            @Parameter(description = "ID interno del paciente", example = "42", required = true)
+            @PathVariable Long id,
+            @Parameter(description = "ID del antecedente a eliminar", example = "3", required = true)
+            @PathVariable Long idAntecedente) {
+        pacienteService.eliminarAntecedente(id, idAntecedente);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Registrar antecedente clínico",

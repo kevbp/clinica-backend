@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +29,31 @@ public class ExamenService {
         examen.setDescripcion(request.getDescripcion());
         examen.setPrecio(request.getPrecio());
         return toCatalogoResponse(examenRepository.save(examen));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExamenResponseDTO> listarCatalogo(String q) {
+        List<Examen> result = (q == null || q.isBlank())
+                ? examenRepository.findAll()
+                : examenRepository.findByNombreContainingIgnoreCaseOrCategoriaContainingIgnoreCase(q, q);
+        return result.stream().map(this::toCatalogoResponse).toList();
+    }
+
+    @Transactional
+    public ExamenResponseDTO actualizar(Long id, ExamenUpdateRequestDTO request) {
+        Examen e = findById(id);
+        if (request.getNombre()      != null) e.setNombre(request.getNombre());
+        if (request.getCategoria()   != null) e.setCategoria(request.getCategoria());
+        if (request.getDescripcion() != null) e.setDescripcion(request.getDescripcion());
+        if (request.getPrecio()      != null) e.setPrecio(request.getPrecio());
+        return toCatalogoResponse(examenRepository.save(e));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExamenAutorizadoResponseDTO> listarAutorizadosPorPaciente(Long idPaciente) {
+        return examenAutorizadoRepository.findByIdPaciente(idPaciente).stream()
+                .map(this::toAutorizadoResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)

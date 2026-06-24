@@ -55,6 +55,22 @@ public class ProgramacionHorarioService {
     }
 
     @Transactional(readOnly = true)
+    public ProgramacionHorarioResponseDTO obtenerPorId(Long id) {
+        return toResponse(programacionHorarioRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Programación de horario no encontrada con id: " + id)));
+    }
+
+    @Transactional
+    public void eliminar(Long id) {
+        if (!programacionHorarioRepository.existsById(id)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND, "Programación de horario no encontrada con id: " + id);
+        }
+        programacionHorarioRepository.deleteById(id);
+    }
+
+    @Transactional(readOnly = true)
     public List<ProgramacionHorarioResponseDTO> obtenerPorPersonal(Long idPersonal) {
         return programacionHorarioRepository.findByIdPersonal(idPersonal).stream()
                 .map(this::toResponse)

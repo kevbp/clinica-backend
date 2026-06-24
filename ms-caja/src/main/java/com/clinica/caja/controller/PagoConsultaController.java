@@ -25,6 +25,34 @@ public class PagoConsultaController {
 
     private final PagoConsultaService pagoService;
 
+    @Operation(summary = "Consultar pago de consulta por ID",
+            description = "Retorna el estado actual del pago: PENDIENTE, PAGADO o PAGADO_SIN_CONFIRMAR.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pago encontrado",
+                    content = @Content(schema = @Schema(implementation = PagoConsultaResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "PagoConsulta no encontrado")
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<PagoConsultaResponseDTO> obtenerPorId(
+            @Parameter(description = "ID del PagoConsulta", example = "10", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(pagoService.obtenerPorId(id));
+    }
+
+    @Operation(summary = "Consultar pago de consulta por ID de cita",
+            description = "Permite a caja localizar el cobro pendiente de una cita sin conocer el ID del PagoConsulta.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pago encontrado",
+                    content = @Content(schema = @Schema(implementation = PagoConsultaResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "No existe pago para esa cita")
+    })
+    @GetMapping("/cita/{idCita}")
+    public ResponseEntity<PagoConsultaResponseDTO> obtenerPorCita(
+            @Parameter(description = "ID de la cita médica", example = "100", required = true)
+            @PathVariable Long idCita) {
+        return ResponseEntity.ok(pagoService.obtenerPorCita(idCita));
+    }
+
     @Operation(summary = "Crear cobro pendiente de consulta",
             description = "Consulta la especialidad del médico (ms-personal) para calcular el monto " +
                           "según TarifaConsulta y persiste el pago en estado PENDIENTE.")
