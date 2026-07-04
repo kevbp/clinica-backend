@@ -2,7 +2,5 @@ server:
   port: 8086
 
 spring:
-  data:
-    mongodb:
-      # URI format: más robusto en Spring Boot 4.x, authSource explícito
-      uri: mongodb://${MONGO_INITDB_ROOT_USERNAME:admin}:${MONGO_INITDB_ROOT_PASSWORD:change-me-mongo}@mongodb-clinica:27017/db_historias_clinicas?authSource=admin
+  mongodb:
+    uri: mongodb://${MONGO_INITDB_ROOT_USERNAME:admin}:${MONGO_INITDB_ROOT_PASSWORD:change-me-mongo}@localhost:27017/db_historias_clinicas?authSource=admin

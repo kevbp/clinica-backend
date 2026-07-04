@@ -15,15 +15,33 @@ public class AgregarRecetaRequestDTO {
             requiredMode = Schema.RequiredMode.REQUIRED)
     private Long idMedicamento;
 
-    @NotNull
-    @Min(1)
-    @Schema(description = "Cantidad a prescribir", example = "20",
+    @NotBlank
+    @Schema(description = "Dosis por toma (cantidad + unidad)", example = "500 mg",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private Integer cantidad;
+    private String dosis;
 
     @NotBlank
-    @Schema(description = "Indicaciones de administración",
-            example = "1 tableta cada 8 horas durante 7 días",
+    @Schema(description = "Vía de administración", example = "Oral",
             requiredMode = Schema.RequiredMode.REQUIRED)
+    private String viaAdministracion;
+
+    @NotBlank
+    @Schema(description = "Frecuencia de administración", example = "Cada 8 horas",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private String frecuencia;
+
+    @NotBlank
+    @Schema(description = "Duración del tratamiento", example = "7 días",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private String duracion;
+
+    @NotNull
+    @Min(1)
+    @Schema(description = "Cantidad total a dispensar", example = "21",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    private Integer cantidadTotal;
+
+    @Schema(description = "Indicaciones adicionales para el paciente",
+            example = "Tomar después de los alimentos")
     private String indicaciones;
 }

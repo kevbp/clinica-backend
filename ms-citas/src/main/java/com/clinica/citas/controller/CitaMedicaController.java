@@ -137,15 +137,17 @@ public class CitaMedicaController {
         return ResponseEntity.ok(citaService.cancelarPendientePago(id));
     }
 
-    @Operation(summary = "Cancelar cita CONFIRMADA",
-            description = "Requiere ≥24h de anticipación. Si se cumple, llama síncronamente a ms-caja " +
-                          "para emitir NotaCredito. Si <24h, el monto se pierde (no hay devolución).")
+    @Operation(summary = "Cancelar cita CONFIRMADA (por el paciente)",
+            description = "Aplica la política de cancelación según anticipación: " +
+                          "≥24h → nota de crédito por el 100 % del pago (CANCELACION_ANTICIPADA). " +
+                          "<24h → nota de crédito por el 70 % del pago; el 30 % se retiene como penalidad (CANCELACION_TARDIA). " +
+                          "Siempre emite nota de crédito mientras el pago esté en estado PAGADO.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Cita cancelada y NotaCredito emitida"),
-            @ApiResponse(responseCode = "400", description = "Anticipación insuficiente (<24h)"),
+            @ApiResponse(responseCode = "200", description = "Cita cancelada y nota de crédito emitida",
+                    content = @Content(schema = @Schema(implementation = CitaMedicaResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Cita no encontrada"),
             @ApiResponse(responseCode = "409", description = "La cita no está en CONFIRMADA"),
-            @ApiResponse(responseCode = "502", description = "ms-caja no disponible para emitir NotaCredito")
+            @ApiResponse(responseCode = "502", description = "ms-caja no disponible para emitir nota de crédito")
     })
     @PostMapping("/{id}/cancelar-confirmada")
     public ResponseEntity<CitaMedicaResponseDTO> cancelarConfirmada(
@@ -154,15 +156,34 @@ public class CitaMedicaController {
         return ResponseEntity.ok(citaService.cancelarConfirmada(id));
     }
 
-    @Operation(summary = "Reagendar cita CONFIRMADA",
-            description = "Cambia la fechaHora de una cita CONFIRMADA. Requiere ≥24h de anticipación " +
-                          "respecto a la hora actual. No afecta el pago ya realizado.")
+    @Operation(summary = "Cancelar cita CONFIRMADA por parte de la clínica",
+            description = "La clínica cancela por causas de fuerza mayor (ausencia del médico, falla técnica, cierre imprevisto). " +
+                          "Siempre emite nota de crédito por el 100 % del pago sin importar la anticipación (CANCELACION_POR_CLINICA).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cita cancelada y nota de crédito total emitida",
+                    content = @Content(schema = @Schema(implementation = CitaMedicaResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Cita no encontrada"),
+            @ApiResponse(responseCode = "409", description = "La cita no está en CONFIRMADA"),
+            @ApiResponse(responseCode = "502", description = "ms-caja no disponible para emitir nota de crédito")
+    })
+    @PostMapping("/{id}/cancelar-por-clinica")
+    public ResponseEntity<CitaMedicaResponseDTO> cancelarPorClinica(
+            @Parameter(description = "ID de la cita", example = "100", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(citaService.cancelarPorClinica(id));
+    }
+
+    @Operation(summary = "Reagendar cita",
+            description = "Cambia la fechaHora de una cita en estado PENDIENTE_PAGO o CONFIRMADA. " +
+                          "Si está CONFIRMADA requiere ≥24h de anticipación. " +
+                          "El nuevo slot debe coincidir con un turno disponible del médico. " +
+                          "Publica evento CitaReagendada hacia ms-notificaciones.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Cita reagendada",
                     content = @Content(schema = @Schema(implementation = CitaMedicaResponseDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Anticipación insuficiente o nuevo slot inválido"),
+            @ApiResponse(responseCode = "400", description = "Anticipación insuficiente (<24h) para cita CONFIRMADA"),
             @ApiResponse(responseCode = "404", description = "Cita no encontrada"),
-            @ApiResponse(responseCode = "409", description = "La cita no está en CONFIRMADA o el nuevo slot está ocupado")
+            @ApiResponse(responseCode = "409", description = "Estado inválido (no es PENDIENTE_PAGO ni CONFIRMADA) o el nuevo slot está ocupado")
     })
     @PostMapping("/{id}/reagendar")
     public ResponseEntity<CitaMedicaResponseDTO> reagendar(

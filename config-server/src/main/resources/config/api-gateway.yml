@@ -7,65 +7,96 @@ spring:
       server:
         webflux:
           routes:
-        - id: ms-personal
-          uri: lb://ms-personal
-          predicates:
-            - Path=/api/personal/**
-          filters:
-            - StripPrefix=2
-        - id: ms-horarios
-          uri: lb://ms-horarios
-          predicates:
-            - Path=/api/horarios/**
-          filters:
-            - StripPrefix=2
-        - id: ms-pacientes
-          uri: lb://ms-pacientes
-          predicates:
-            - Path=/api/pacientes/**
-          filters:
-            - StripPrefix=2
-        - id: ms-farmacia
-          uri: lb://ms-farmacia
-          predicates:
-            - Path=/api/farmacia/**
-          filters:
-            - StripPrefix=2
-        - id: ms-laboratorio
-          uri: lb://ms-laboratorio
-          predicates:
-            - Path=/api/laboratorio/**
-          filters:
-            - StripPrefix=2
-        - id: ms-historias-clinicas
-          uri: lb://ms-historias-clinicas
-          predicates:
-            - Path=/api/historias/**
-          filters:
-            - StripPrefix=2
-        - id: ms-citas
-          uri: lb://ms-citas
-          predicates:
-            - Path=/api/citas/**
-          filters:
-            - StripPrefix=2
-        - id: ms-atencion-medica
-          uri: lb://ms-atencion-medica
-          predicates:
-            - Path=/api/atenciones/**
-          filters:
-            - StripPrefix=2
-        - id: ms-caja
-          uri: lb://ms-caja
-          predicates:
-            - Path=/api/caja/**
-          filters:
-            - StripPrefix=2
+            - id: ms-personal
+              uri: lb://ms-personal
+              predicates:
+                - Path=/personal/**
+            - id: ms-especialidades
+              uri: lb://ms-personal
+              predicates:
+                - Path=/especialidades/**
+            - id: ms-consultorios
+              uri: lb://ms-horarios
+              predicates:
+                - Path=/consultorios/**
+            - id: ms-programacion-horarios
+              uri: lb://ms-horarios
+              predicates:
+                - Path=/programacion-horarios/**
+            - id: ms-pacientes
+              uri: lb://ms-pacientes
+              predicates:
+                - Path=/pacientes/**
+            - id: ms-medicamentos
+              uri: lb://ms-farmacia
+              predicates:
+                - Path=/medicamentos/**
+            - id: ms-examenes
+              uri: lb://ms-laboratorio
+              predicates:
+                - Path=/examenes/**
+            - id: ms-examenes-autorizados
+              uri: lb://ms-laboratorio
+              predicates:
+                - Path=/examenes-autorizados/**
+            - id: ms-historias
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/historias/**
+            - id: ms-episodios
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/episodios/**
+            - id: ms-recetas
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/recetas/**
+            - id: ms-ordenes
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/ordenes/**
+            - id: ms-adendas
+              uri: lb://ms-historias-clinicas
+              predicates:
+                - Path=/adendas/**
+            - id: ms-citas
+              uri: lb://ms-citas
+              predicates:
+                - Path=/citas/**
+            - id: ms-atencion-medica
+              uri: lb://ms-atencion-medica
+              predicates:
+                - Path=/atenciones/**
+            - id: ms-pagos-consulta
+              uri: lb://ms-caja
+              predicates:
+                - Path=/pagos-consulta/**
+            - id: ms-proformas
+              uri: lb://ms-caja
+              predicates:
+                - Path=/proformas/**
+            - id: ms-notas-credito
+              uri: lb://ms-caja
+              predicates:
+                - Path=/notas-credito/**
+            - id: ms-tarifas-consulta
+              uri: lb://ms-caja
+              predicates:
+                - Path=/tarifas-consulta/**
+            - id: ms-comprobantes
+              uri: lb://ms-caja
+              predicates:
+                - Path=/comprobantes/**
+            - id: ms-retiros-nota-credito
+              uri: lb://ms-caja
+              predicates:
+                - Path=/retiros-nota-credito/**
+            - id: ms-notificaciones
+              uri: lb://ms-notificaciones
+              predicates:
+                - Path=/notificaciones/**
   security:
     oauth2:
       resourceserver:
         jwt:
-          # Sin issuer-uri: valida firma JWT pero no verifica el issuer claim.
-          # Necesario porque el token se emite desde localhost:9090 pero el
-          # gateway valida internamente via keycloak-clinica:8080.
-          jwk-set-uri: http://keycloak-clinica:8080/realms/clinica-interno/protocol/openid-connect/certs
+          jwk-set-uri: http://localhost:9090/realms/clinica-interno/protocol/openid-connect/certs

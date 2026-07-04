@@ -4,5 +4,6 @@ public enum TipoPersonal {
     MEDICO,
     RECEPCIONISTA,
     TECNICO_LABORATORIO,
-    ADMINISTRATIVO
+    ADMINISTRATIVO,
+    ADMIN
 }

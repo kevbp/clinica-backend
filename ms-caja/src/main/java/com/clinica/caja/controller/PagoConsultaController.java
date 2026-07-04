@@ -1,8 +1,13 @@
 package com.clinica.caja.controller;
 
+import com.clinica.caja.dto.AplicarCreditoRequestDTO;
+import com.clinica.caja.dto.ComprobanteResponseDTO;
 import com.clinica.caja.dto.PagoConsultaRequestDTO;
 import com.clinica.caja.dto.PagoConsultaResponseDTO;
+import com.clinica.caja.service.NotaCreditoService;
 import com.clinica.caja.service.PagoConsultaService;
+
+import java.math.BigDecimal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -24,6 +29,7 @@ import org.springframework.web.bind.annotation.*;
 public class PagoConsultaController {
 
     private final PagoConsultaService pagoService;
+    private final NotaCreditoService notaCreditoService;
 
     @Operation(summary = "Consultar pago de consulta por ID",
             description = "Retorna el estado actual del pago: PENDIENTE, PAGADO o PAGADO_SIN_CONFIRMAR.")
@@ -86,5 +92,45 @@ public class PagoConsultaController {
             @Parameter(description = "ID del PagoConsulta", example = "10", required = true)
             @PathVariable Long id) {
         return ResponseEntity.ok(pagoService.confirmarPago(id));
+    }
+
+    @Operation(summary = "Obtener la boleta del pago de consulta",
+            description = "La boleta se genera automáticamente al confirmar el pago con éxito. " +
+                          "404 si el pago aún no fue confirmado.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Boleta encontrada",
+                    content = @Content(schema = @Schema(implementation = ComprobanteResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aún no se ha emitido boleta para este pago")
+    })
+    @GetMapping("/{id}/comprobante")
+    public ResponseEntity<ComprobanteResponseDTO> obtenerComprobante(
+            @Parameter(description = "ID del PagoConsulta", example = "10", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(pagoService.obtenerComprobante(id));
+    }
+
+    @Operation(summary = "Aplicar saldo de nota de crédito",
+            description = "Aplica el saldo de una NC DISPONIBLE al monto pendiente de este pago. " +
+                          "La NC pasa a estado USADA.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Crédito aplicado",
+                    content = @Content(schema = @Schema(implementation = PagoConsultaResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Pago o NC no encontrada"),
+            @ApiResponse(responseCode = "409", description = "NC no disponible o no pertenece al paciente")
+    })
+    @PostMapping("/{id}/aplicar-credito")
+    public ResponseEntity<PagoConsultaResponseDTO> aplicarCredito(
+            @PathVariable Long id,
+            @Valid @RequestBody AplicarCreditoRequestDTO request) {
+        return ResponseEntity.ok(pagoService.aplicarCredito(id, request.getIdNotaCredito()));
+    }
+
+    @Operation(summary = "Saldo disponible en NCs del paciente",
+            description = "Suma el monto de todas las NCs DISPONIBLES del paciente.")
+    @GetMapping("/saldo-disponible")
+    public ResponseEntity<BigDecimal> saldoDisponible(
+            @Parameter(description = "ID del paciente", required = true)
+            @RequestParam Long idPaciente) {
+        return ResponseEntity.ok(notaCreditoService.obtenerSaldoDisponible(idPaciente));
     }
 }

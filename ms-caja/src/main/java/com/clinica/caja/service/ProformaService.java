@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,8 +82,8 @@ public class ProformaService {
                     item.setTipo(TipoItem.MEDICAMENTO);
                     item.setIdItem(linea.getIdMedicamento());
                     item.setDescripcion("Medicamento id=" + linea.getIdMedicamento());
-                    item.setPrecioCongelado(precio.getPrecio().multiply(BigDecimal.valueOf(linea.getCantidad())));
-                    item.setCantidad(linea.getCantidad());
+                    item.setPrecioCongelado(precio.getPrecio().multiply(BigDecimal.valueOf(linea.getCantidadTotal())));
+                    item.setCantidad(linea.getCantidadTotal());
                     item.setEstado(EstadoItem.PENDIENTE);
                     items.add(item);
                 } catch (FeignException ex) {
@@ -196,9 +197,12 @@ public class ProformaService {
                     "No hay ítems pagados en la proforma para emitir un comprobante.");
         }
 
+        BigDecimal subtotal = total.divide(new BigDecimal("1.18"), 2, RoundingMode.HALF_UP);
         Comprobante comprobante = new Comprobante();
         comprobante.setTipo(TipoComprobante.PROFORMA);
         comprobante.setIdOrigen(idProforma);
+        comprobante.setSubtotal(subtotal);
+        comprobante.setIgv(total.subtract(subtotal));
         comprobante.setMontoTotal(total);
         comprobante.setFechaEmision(LocalDateTime.now());
         comprobante.setNumero("BC-" + System.currentTimeMillis());
@@ -224,6 +228,7 @@ public class ProformaService {
     private ComprobanteResponseDTO toComprobanteResponse(Comprobante c) {
         ComprobanteResponseDTO dto = new ComprobanteResponseDTO();
         dto.setId(c.getId()); dto.setTipo(c.getTipo()); dto.setIdOrigen(c.getIdOrigen());
+        dto.setSubtotal(c.getSubtotal()); dto.setIgv(c.getIgv());
         dto.setMontoTotal(c.getMontoTotal()); dto.setFechaEmision(c.getFechaEmision());
         dto.setNumero(c.getNumero());
         return dto;

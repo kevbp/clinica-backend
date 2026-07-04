@@ -1,5 +1,6 @@
 package com.clinica.caja.client;
 
+import com.clinica.caja.client.dto.ExamenAutorizadoClientDTO;
 import com.clinica.caja.client.dto.ExamenAutorizadoRequestDTO;
 import com.clinica.caja.client.dto.PrecioExamenDTO;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -16,5 +17,5 @@ public interface LaboratorioFeignClient {
     ResponseEntity<PrecioExamenDTO> obtenerPrecio(@PathVariable Long id);
 
     @PostMapping("/examenes-autorizados")
-    ResponseEntity<Void> autorizarExamen(@RequestBody ExamenAutorizadoRequestDTO request);
+    ResponseEntity<ExamenAutorizadoClientDTO> autorizarExamen(@RequestBody ExamenAutorizadoRequestDTO request);
 }

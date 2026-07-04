@@ -4,11 +4,15 @@ import com.clinica.atencion.client.CitasFeignClient;
 import com.clinica.atencion.client.FarmaciaFeignClient;
 import com.clinica.atencion.client.LaboratorioFeignClient;
 import com.clinica.atencion.client.PacientesFeignClient;
+import com.clinica.atencion.client.PersonalFeignClient;
 import com.clinica.atencion.client.dto.AntecedenteClinicoDTO;
 import com.clinica.atencion.client.dto.CitaMedicaDTO;
 import com.clinica.atencion.client.dto.DisponibilidadDTO;
+import com.clinica.atencion.client.dto.EstadoCitaEnum;
 import com.clinica.atencion.client.dto.EstadoCitaUpdateDTO;
 import com.clinica.atencion.client.dto.ExamenCatalogoDTO;
+import com.clinica.atencion.client.dto.PacienteDTO;
+import com.clinica.atencion.client.dto.PersonalDTO;
 import com.clinica.atencion.config.RabbitMQConfig;
 import com.clinica.atencion.dto.*;
 import com.clinica.atencion.event.*;
@@ -38,6 +42,7 @@ public class AtencionMedicaService {
     private final RabbitTemplate      rabbitTemplate;
     private final CitasFeignClient        citasClient;
     private final PacientesFeignClient    pacientesClient;
+    private final PersonalFeignClient     personalClient;
     private final FarmaciaFeignClient     farmaciaClient;
     private final LaboratorioFeignClient  laboratorioClient;
 
@@ -51,7 +56,6 @@ public class AtencionMedicaService {
                     "Ya existe un borrador activo para la cita " + request.getIdCita());
         }
 
-        // Validar que la cita está CONFIRMADA
         CitaMedicaDTO cita = citasClient.obtenerCita(request.getIdCita()).getBody();
         if (cita == null || !"CONFIRMADA".equals(cita.getEstado())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -83,6 +87,39 @@ public class AtencionMedicaService {
         return toResponse(obtenerBorradorOFallar(idCita));
     }
 
+    // ---- Actualizar anamnesis (motivo de consulta + signos vitales) ----
+
+    public BorradorResponseDTO actualizarAnamnesis(Long idCita, ActualizarAnamnesisRequestDTO request) {
+        BorradorAtencion borrador = obtenerBorradorOFallar(idCita);
+
+        if (request.getMotivoConsulta() != null) {
+            borrador.setMotivoConsulta(request.getMotivoConsulta());
+        }
+
+        if (request.getSignosVitales() != null) {
+            SignosVitalesDTO sv = request.getSignosVitales();
+            SignosVitalesBorrador svb = new SignosVitalesBorrador();
+            svb.setPeso(sv.getPeso());
+            svb.setTalla(sv.getTalla());
+            svb.setPresionArterial(sv.getPresionArterial());
+            svb.setFrecuenciaCardiaca(sv.getFrecuenciaCardiaca());
+            svb.setTemperatura(sv.getTemperatura());
+            svb.setSaturacionOxigeno(sv.getSaturacionOxigeno());
+            svb.setFrecuenciaRespiratoria(sv.getFrecuenciaRespiratoria());
+            // Calcular IMC si se tienen peso y talla
+            if (sv.getPeso() != null && sv.getTalla() != null && sv.getTalla() > 0) {
+                double tallaMt = sv.getTalla() / 100.0;
+                svb.setImc(Math.round((sv.getPeso() / (tallaMt * tallaMt)) * 100.0) / 100.0);
+            } else {
+                svb.setImc(sv.getImc());
+            }
+            borrador.setSignosVitales(svb);
+        }
+
+        guardarBorrador(key(idCita), borrador);
+        return toResponse(borrador);
+    }
+
     // ---- Agregar diagnóstico ----
 
     public BorradorResponseDTO agregarDiagnostico(Long idCita, DiagnosticoRequestDTO request) {
@@ -91,6 +128,8 @@ public class AtencionMedicaService {
         DiagnosticoBorrador diag = new DiagnosticoBorrador();
         diag.setCodigoCie10(request.getCodigoCie10());
         diag.setDescripcion(request.getDescripcion());
+        diag.setTipoDiagnostico(
+                request.getTipoDiagnostico() != null ? request.getTipoDiagnostico() : "PRESUNTIVO");
         borrador.setDiagnostico(diag);
         borrador.setObservacionesClinicas(request.getObservacionesClinicas());
 
@@ -105,12 +144,15 @@ public class AtencionMedicaService {
 
         LineaRecetaBorrador linea = new LineaRecetaBorrador();
         linea.setIdMedicamento(request.getIdMedicamento());
-        linea.setCantidad(request.getCantidad());
+        linea.setDosis(request.getDosis());
+        linea.setViaAdministracion(request.getViaAdministracion());
+        linea.setFrecuencia(request.getFrecuencia());
+        linea.setDuracion(request.getDuracion());
+        linea.setCantidadTotal(request.getCantidadTotal());
         linea.setIndicaciones(request.getIndicaciones());
         borrador.getLineasReceta().add(linea);
         guardarBorrador(key(idCita), borrador);
 
-        // Obtener antecedentes/alergias del paciente como advertencia al médico
         List<AntecedenteClinicoDTO> antecedentes = List.of();
         try {
             antecedentes = pacientesClient.obtenerAntecedentes(borrador.getIdPaciente()).getBody();
@@ -120,7 +162,6 @@ public class AtencionMedicaService {
                     borrador.getIdPaciente(), ex.getMessage());
         }
 
-        // Obtener disponibilidad de stock como advertencia (nunca descuenta)
         DisponibilidadDTO disponibilidad = null;
         try {
             disponibilidad = farmaciaClient.obtenerDisponibilidad(request.getIdMedicamento()).getBody();
@@ -141,7 +182,6 @@ public class AtencionMedicaService {
     public AgregarOrdenResponseDTO agregarOrden(Long idCita, AgregarOrdenRequestDTO request) {
         BorradorAtencion borrador = obtenerBorradorOFallar(idCita);
 
-        // Validar que el examen existe en catálogo (nunca consulta precio)
         ExamenCatalogoDTO examen = laboratorioClient.obtenerExamen(request.getIdExamen()).getBody();
 
         LineaOrdenBorrador linea = new LineaOrdenBorrador();
@@ -166,19 +206,16 @@ public class AtencionMedicaService {
                     "No se puede finalizar la atención sin un diagnóstico CIE-10.");
         }
 
-        // Paso 1: marcar cita como ATENDIDA (síncrono; si falla, no se continúa)
-        citasClient.actualizarEstado(idCita, new EstadoCitaUpdateDTO("ATENDIDA"));
+        CitaMedicaDTO citaAtendida = citasClient.actualizarEstado(idCita, new EstadoCitaUpdateDTO(EstadoCitaEnum.ATENDIDA)).getBody();
         log.info("Cita id={} marcada como ATENDIDA", idCita);
 
-        // Paso 2: publicar evento EpisodioFinalizado hacia RabbitMQ
         EpisodioFinalizadoEvent evento = buildEvento(borrador);
         rabbitTemplate.convertAndSend(
                 RabbitMQConfig.EXCHANGE_ATENCION, RabbitMQConfig.ROUTING_KEY_EPISODIO, evento);
         log.info("Evento EpisodioFinalizado publicado para cita={}", idCita);
 
-        // Paso 3: ms-historias-clinicas persiste (asíncrono, ya disparado por el evento)
+        publicarNotificacionAtencion(idCita, borrador.getIdPaciente(), citaAtendida);
 
-        // Paso 4: eliminar borrador de Redis
         redisTemplate.delete(key(idCita));
         log.info("Borrador Redis eliminado para cita={}", idCita);
 
@@ -187,16 +224,13 @@ public class AtencionMedicaService {
 
     // ---- Helpers ----
 
-    private String key(Long idCita) {
-        return KEY_PREFIX + idCita;
-    }
+    private String key(Long idCita) { return KEY_PREFIX + idCita; }
 
     private BorradorAtencion obtenerBorradorOFallar(Long idCita) {
         String json = redisTemplate.opsForValue().get(key(idCita));
         if (json == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "No existe borrador activo para la cita " + idCita +
-                    ". Inicie la atención primero.");
+                    "No existe borrador activo para la cita " + idCita + ". Inicie la atención primero.");
         }
         try {
             return objectMapper.readValue(json, BorradorAtencion.class);
@@ -216,15 +250,55 @@ public class AtencionMedicaService {
         }
     }
 
+    private void publicarNotificacionAtencion(Long idCita, Long idPaciente, CitaMedicaDTO cita) {
+        try {
+            PacienteDTO paciente = pacientesClient.obtenerPaciente(idPaciente).getBody();
+            if (paciente == null || paciente.getCorreo() == null || paciente.getCorreo().isBlank()) {
+                log.info("Paciente id={} sin correo, no se publica notificación", idPaciente);
+                return;
+            }
+            EpisodioAtendidoEvent notificacion = new EpisodioAtendidoEvent(
+                    idCita,
+                    paciente.getNombres() + " " + paciente.getApellidos(),
+                    paciente.getCorreo(),
+                    cita != null ? cita.getFechaHora() : null,
+                    true);
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.EXCHANGE_ATENCION, RabbitMQConfig.ROUTING_KEY_EPISODIO_NOTIFICACION, notificacion);
+        } catch (Exception ex) {
+            log.warn("No se pudo publicar notificación de atención para cita={}: {}", idCita, ex.getMessage());
+        }
+    }
+
     private EpisodioFinalizadoEvent buildEvento(BorradorAtencion b) {
+        PacienteSnapshotDTO pacienteSnapshot = buildPacienteSnapshot(b.getIdPaciente());
+        MedicoSnapshotDTO   medicoSnapshot   = buildMedicoSnapshot(b.getIdPersonalMedico());
+
         DiagnosticoEventDTO diag = new DiagnosticoEventDTO(
                 b.getDiagnostico().getCodigoCie10(),
-                b.getDiagnostico().getDescripcion());
+                b.getDiagnostico().getDescripcion(),
+                b.getDiagnostico().getTipoDiagnostico());
+
+        SignosVitalesEventDTO sv = null;
+        if (b.getSignosVitales() != null) {
+            SignosVitalesBorrador svb = b.getSignosVitales();
+            sv = new SignosVitalesEventDTO();
+            sv.setPeso(svb.getPeso());
+            sv.setTalla(svb.getTalla());
+            sv.setPresionArterial(svb.getPresionArterial());
+            sv.setFrecuenciaCardiaca(svb.getFrecuenciaCardiaca());
+            sv.setTemperatura(svb.getTemperatura());
+            sv.setSaturacionOxigeno(svb.getSaturacionOxigeno());
+            sv.setFrecuenciaRespiratoria(svb.getFrecuenciaRespiratoria());
+            sv.setImc(svb.getImc());
+        }
 
         RecetaEventDTO receta = null;
         if (!b.getLineasReceta().isEmpty()) {
             receta = new RecetaEventDTO(b.getLineasReceta().stream()
-                    .map(l -> new LineaRecetaEventDTO(l.getIdMedicamento(), l.getCantidad(), l.getIndicaciones()))
+                    .map(l -> new LineaRecetaEventDTO(
+                            l.getIdMedicamento(), l.getDosis(), l.getViaAdministracion(),
+                            l.getFrecuencia(), l.getDuracion(), l.getCantidadTotal(), l.getIndicaciones()))
                     .toList());
         }
 
@@ -237,7 +311,35 @@ public class AtencionMedicaService {
 
         return new EpisodioFinalizadoEvent(
                 b.getIdCita(), b.getIdPaciente(), b.getIdPersonalMedico(),
+                pacienteSnapshot, medicoSnapshot,
+                b.getMotivoConsulta(), sv,
                 diag, b.getObservacionesClinicas(), receta, orden);
+    }
+
+    private PacienteSnapshotDTO buildPacienteSnapshot(Long idPaciente) {
+        try {
+            PacienteDTO p = pacientesClient.obtenerPaciente(idPaciente).getBody();
+            if (p == null) return new PacienteSnapshotDTO(idPaciente, null, null, null, null);
+            return new PacienteSnapshotDTO(p.getId(), p.getNombres(), p.getApellidos(),
+                    p.getDocumentoIdentidad(), p.getFechaNacimiento());
+        } catch (Exception ex) {
+            log.warn("No se pudo obtener snapshot del paciente id={}: {}", idPaciente, ex.getMessage());
+            return new PacienteSnapshotDTO(idPaciente, null, null, null, null);
+        }
+    }
+
+    private MedicoSnapshotDTO buildMedicoSnapshot(Long idMedico) {
+        try {
+            PersonalDTO p = personalClient.obtenerPersonal(idMedico).getBody();
+            if (p == null) return new MedicoSnapshotDTO(idMedico, null, null, null, null);
+            String colegiatura = p.getMedicoInfo() != null ? p.getMedicoInfo().getNumeroColegiatura() : null;
+            String especialidad = (p.getMedicoInfo() != null && p.getMedicoInfo().getEspecialidad() != null)
+                    ? p.getMedicoInfo().getEspecialidad().getNombre() : null;
+            return new MedicoSnapshotDTO(p.getId(), p.getNombres(), p.getApellidos(), colegiatura, especialidad);
+        } catch (Exception ex) {
+            log.warn("No se pudo obtener snapshot del médico id={}: {}", idMedico, ex.getMessage());
+            return new MedicoSnapshotDTO(idMedico, null, null, null, null);
+        }
     }
 
     private BorradorResponseDTO toResponse(BorradorAtencion b) {
@@ -245,25 +347,48 @@ public class AtencionMedicaService {
         dto.setIdCita(b.getIdCita());
         dto.setIdPaciente(b.getIdPaciente());
         dto.setIdPersonalMedico(b.getIdPersonalMedico());
+        dto.setMotivoConsulta(b.getMotivoConsulta());
         dto.setObservacionesClinicas(b.getObservacionesClinicas());
+
+        if (b.getSignosVitales() != null) {
+            SignosVitalesBorrador svb = b.getSignosVitales();
+            SignosVitalesDTO sv = new SignosVitalesDTO();
+            sv.setPeso(svb.getPeso());
+            sv.setTalla(svb.getTalla());
+            sv.setPresionArterial(svb.getPresionArterial());
+            sv.setFrecuenciaCardiaca(svb.getFrecuenciaCardiaca());
+            sv.setTemperatura(svb.getTemperatura());
+            sv.setSaturacionOxigeno(svb.getSaturacionOxigeno());
+            sv.setFrecuenciaRespiratoria(svb.getFrecuenciaRespiratoria());
+            sv.setImc(svb.getImc());
+            dto.setSignosVitales(sv);
+        }
 
         if (b.getDiagnostico() != null) {
             DiagnosticoDTO diagDto = new DiagnosticoDTO();
             diagDto.setCodigoCie10(b.getDiagnostico().getCodigoCie10());
             diagDto.setDescripcion(b.getDiagnostico().getDescripcion());
+            diagDto.setTipoDiagnostico(b.getDiagnostico().getTipoDiagnostico());
             dto.setDiagnostico(diagDto);
         }
 
         dto.setLineasReceta(b.getLineasReceta().stream().map(l -> {
             LineaRecetaDTO ld = new LineaRecetaDTO();
-            ld.setIdMedicamento(l.getIdMedicamento()); ld.setCantidad(l.getCantidad());
-            ld.setIndicaciones(l.getIndicaciones()); return ld;
+            ld.setIdMedicamento(l.getIdMedicamento());
+            ld.setDosis(l.getDosis());
+            ld.setViaAdministracion(l.getViaAdministracion());
+            ld.setFrecuencia(l.getFrecuencia());
+            ld.setDuracion(l.getDuracion());
+            ld.setCantidadTotal(l.getCantidadTotal());
+            ld.setIndicaciones(l.getIndicaciones());
+            return ld;
         }).toList());
 
         dto.setLineasOrden(b.getLineasOrden().stream().map(l -> {
             LineaOrdenDTO ld = new LineaOrdenDTO();
             ld.setIdExamen(l.getIdExamen());
-            ld.setIndicacionesPreparacion(l.getIndicacionesPreparacion()); return ld;
+            ld.setIndicacionesPreparacion(l.getIndicacionesPreparacion());
+            return ld;
         }).toList());
 
         return dto;

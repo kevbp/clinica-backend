@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -61,5 +62,15 @@ public class GlobalExceptionHandler {
                         fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "valor inválido"
                 ));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errores);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleResponseStatus(ResponseStatusException ex) {
+        log.warn("Error de negocio [{}]: {}", ex.getStatusCode(), ex.getReason());
+        String mensaje = ex.getReason() != null && !ex.getReason().isBlank()
+                ? ex.getReason()
+                : "Error en la operación.";
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(Map.of("mensaje", mensaje));
     }
 }

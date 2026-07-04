@@ -4,12 +4,16 @@ import com.clinica.citas.client.CajaFeignClient;
 import com.clinica.citas.client.HorariosFeignClient;
 import com.clinica.citas.client.PacientesFeignClient;
 import com.clinica.citas.client.PersonalFeignClient;
+import com.clinica.citas.client.dto.NotaCreditoClientDTO;
 import com.clinica.citas.client.dto.NotaCreditoRequestDTO;
 import com.clinica.citas.client.dto.PacienteDTO;
+import com.clinica.citas.client.dto.PersonalDTO;
 import com.clinica.citas.client.dto.ProgramacionHorarioDTO;
 import com.clinica.citas.config.RabbitMQConfig;
 import com.clinica.citas.dto.*;
+import com.clinica.citas.event.CitaCanceladaEvent;
 import com.clinica.citas.event.CitaCreadaEvent;
+import com.clinica.citas.event.CitaReagendadaEvent;
 import com.clinica.citas.model.CitaMedica;
 import com.clinica.citas.model.EstadoCita;
 import com.clinica.citas.repository.CitaMedicaRepository;
@@ -25,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -43,7 +48,7 @@ public class CitaMedicaService {
 
     // ---- Consulta individual ----
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CitaMedicaResponseDTO obtenerPorId(Long id) {
         return toResponse(findById(id));
     }
@@ -53,29 +58,29 @@ public class CitaMedicaService {
     @Transactional(readOnly = true)
     public List<CitaMedicaResponseDTO> listar(Long idPaciente, Long idPersonal,
                                                EstadoCita estado, LocalDate fecha) {
+        // findAll() + filtrado en Java: evita el problema de Hibernate 6 al inferir
+        // el tipo de un parámetro null para un enum (o LocalDateTime) en JPQL (ver CLAUDE.md regla 12).
         LocalDateTime inicio = fecha != null ? fecha.atStartOfDay() : null;
         LocalDateTime fin    = fecha != null ? fecha.plusDays(1).atStartOfDay() : null;
-        return citaRepository.buscarConFiltros(idPaciente, idPersonal, estado, inicio, fin)
-                .stream().map(this::toResponse).toList();
+        return citaRepository.findAll().stream()
+                .filter(c -> idPaciente == null || idPaciente.equals(c.getIdPaciente()))
+                .filter(c -> idPersonal == null || idPersonal.equals(c.getIdPersonal()))
+                .filter(c -> estado == null || estado == c.getEstado())
+                .filter(c -> inicio == null || !c.getFechaHora().isBefore(inicio))
+                .filter(c -> fin == null || c.getFechaHora().isBefore(fin))
+                .sorted(Comparator.comparing(CitaMedica::getFechaHora))
+                .map(this::toResponse)
+                .toList();
     }
 
     // ---- Lazy Evaluation ----
 
     @Transactional(readOnly = true)
     public List<SlotDisponibleDTO> calcularDisponibilidad(Long idPersonal, LocalDate fecha) {
-        // 1. Obtener turnos maestros del médico
-        List<ProgramacionHorarioDTO> horarios = horariosClient.getHorariosPorPersonal(idPersonal).getBody();
-        if (horarios == null || horarios.isEmpty()) {
-            return List.of();
-        }
-
-        // 2. Filtrar por el día de la semana de la fecha solicitada
-        String diaSemana = mapDayOfWeek(fecha);
-        List<ProgramacionHorarioDTO> horariosDelDia = horarios.stream()
-                .filter(h -> h.getDiaSemana().equals(diaSemana))
-                .toList();
-
-        if (horariosDelDia.isEmpty()) {
+        // 1. Obtener turnos del médico para esa fecha concreta (ms-horarios usa fecha, no día de semana)
+        List<ProgramacionHorarioDTO> horariosDelDia =
+                horariosClient.getHorariosPorPersonal(idPersonal, fecha, fecha).getBody();
+        if (horariosDelDia == null || horariosDelDia.isEmpty()) {
             return List.of();
         }
 
@@ -119,17 +124,19 @@ public class CitaMedicaService {
         // Obtener perfil del paciente (valida existencia + obtiene correo)
         PacienteDTO paciente = pacientesClient.obtenerPaciente(request.getIdPaciente()).getBody();
 
-        // Obtener horarios del médico y localizar el turno para la fechaHora solicitada
-        List<ProgramacionHorarioDTO> horarios =
-                horariosClient.getHorariosPorPersonal(request.getIdPersonal()).getBody();
+        // Obtener nombre del médico y especialidad, para embeber en el evento CitaCreada
+        PersonalDTO medico = personalClient.obtenerPersonal(request.getIdPersonal()).getBody();
 
-        String diaSemana = mapDayOfWeek(request.getFechaHora().toLocalDate());
+        // Obtener el turno del médico para esa fecha concreta y localizar el bloque de la fechaHora solicitada
+        LocalDate fechaSolicitada = request.getFechaHora().toLocalDate();
+        List<ProgramacionHorarioDTO> horariosDelDia =
+                horariosClient.getHorariosPorPersonal(request.getIdPersonal(), fechaSolicitada, fechaSolicitada).getBody();
+
         LocalTime horaSlot = request.getFechaHora().toLocalTime();
 
-        ProgramacionHorarioDTO horarioCubierto = (horarios == null ? List.<ProgramacionHorarioDTO>of() : horarios)
+        ProgramacionHorarioDTO horarioCubierto = (horariosDelDia == null ? List.<ProgramacionHorarioDTO>of() : horariosDelDia)
                 .stream()
-                .filter(h -> h.getDiaSemana().equals(diaSemana)
-                        && !horaSlot.isBefore(h.getHoraInicio())
+                .filter(h -> !horaSlot.isBefore(h.getHoraInicio())
                         && horaSlot.plusMinutes(20).compareTo(h.getHoraFin()) <= 0)
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -152,6 +159,13 @@ public class CitaMedicaService {
                     "El bloque horario solicitado ya está ocupado.");
         }
 
+        // Validar que el paciente no tenga otra cita activa en el mismo instante
+        if (citaRepository.existsByIdPacienteAndFechaHoraAndEstadoNot(
+                request.getIdPaciente(), request.getFechaHora(), EstadoCita.CANCELADA)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El paciente ya tiene una cita programada en ese mismo horario.");
+        }
+
         // Crear cita
         CitaMedica cita = new CitaMedica();
         cita.setIdPaciente(request.getIdPaciente());
@@ -168,7 +182,12 @@ public class CitaMedicaService {
                 cita.getIdPersonal(),
                 cita.getIdConsultorio(),
                 cita.getFechaHora(),
-                paciente != null ? paciente.getContacto() : null
+                paciente != null ? paciente.getCorreo() : null,
+                request.getNotificarCorreo() == null || request.getNotificarCorreo(),
+                paciente != null ? (paciente.getNombres() + " " + paciente.getApellidos()) : null,
+                medico != null ? (medico.getNombres() + " " + medico.getApellidos()) : null,
+                medico != null && medico.getMedicoInfo() != null && medico.getMedicoInfo().getEspecialidad() != null
+                        ? medico.getMedicoInfo().getEspecialidad().getNombre() : null
         );
         rabbitTemplate.convertAndSend(
                 RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CREADA, evento);
@@ -196,43 +215,148 @@ public class CitaMedicaService {
                     "Solo se pueden cancelar citas en estado PENDIENTE_PAGO mediante este endpoint.");
         }
         cita.setEstado(EstadoCita.CANCELADA);
-        return toResponse(citaRepository.save(cita));
+        cita = citaRepository.save(cita);
+        publicarCitaCancelada(cita, "Cancelación sin pago previo, sin penalidad.");
+        return toResponse(cita);
     }
 
-    // ---- Cancelación CONFIRMADA (con ventana de 24h) ----
+    // ---- Cancelación CONFIRMADA (política de anticipación con penalidad parcial) ----
 
+    /**
+     * Cancela una cita CONFIRMADA aplicando la política de cancelación:
+     * - ≥24h de anticipación: nota de crédito por el 100 % del pago (CANCELACION_ANTICIPADA).
+     * - <24h de anticipación: nota de crédito por el 70 % del pago; se retiene el 30 % como penalidad (CANCELACION_TARDIA).
+     */
     @Transactional
     public CitaMedicaResponseDTO cancelarConfirmada(Long id) {
         CitaMedica cita = findById(id);
-        validarConfirmadaConAnticipacion(cita, "cancelar");
+        if (cita.getEstado() != EstadoCita.CONFIRMADA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se puede cancelar mediante este endpoint una cita en estado CONFIRMADA.");
+        }
 
-        // Llamar ms-caja para emitir NotaCredito
-        cajaClient.emitirNotaCredito(
-                new NotaCreditoRequestDTO(id, "Cancelación de cita con anticipación ≥ 24h"));
+        boolean conAnticipacion = !cita.getFechaHora().minusHours(24).isBefore(LocalDateTime.now());
+        String tipoNc = conAnticipacion ? "CANCELACION_ANTICIPADA" : "CANCELACION_TARDIA";
+        String motivo = conAnticipacion
+                ? "Cancelación con anticipación ≥ 24h. Devolución total del pago."
+                : "Cancelación con anticipación < 24h. Se retiene el 30 % como penalidad; se devuelve el 70 %.";
+
+        NotaCreditoClientDTO nc = cajaClient.emitirNotaCredito(new NotaCreditoRequestDTO(id, motivo, tipoNc)).getBody();
 
         cita.setEstado(EstadoCita.CANCELADA);
-        return toResponse(citaRepository.save(cita));
+        cita = citaRepository.save(cita);
+
+        String motuvioEvento = conAnticipacion
+                ? "Cancelación con anticipación ≥ 24h. Se emitió nota de crédito por el 100 % del pago."
+                : "Cancelación con anticipación < 24h. Se emitió nota de crédito por el 70 % del pago (penalidad del 30 % retenida).";
+        publicarCitaCancelada(cita, motuvioEvento, nc);
+        return toResponse(cita);
     }
 
-    // ---- Reagendamiento (con ventana de 24h) ----
+    // ---- Cancelación por parte de la clínica (fuerza mayor) ----
+
+    /**
+     * La clínica cancela la cita (ausencia del médico, falla técnica, cierre imprevisto).
+     * Siempre emite nota de crédito por el 100 % del pago sin importar la anticipación.
+     * Solo aplica a citas CONFIRMADAS (que tienen pago).
+     */
+    @Transactional
+    public CitaMedicaResponseDTO cancelarPorClinica(Long id) {
+        CitaMedica cita = findById(id);
+        if (cita.getEstado() != EstadoCita.CONFIRMADA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Solo se puede cancelar por parte de la clínica una cita en estado CONFIRMADA.");
+        }
+
+        NotaCreditoClientDTO ncClinica = cajaClient.emitirNotaCredito(new NotaCreditoRequestDTO(
+                id,
+                "Cancelación por parte de la clínica por causas de fuerza mayor. Devolución total del pago.",
+                "CANCELACION_POR_CLINICA")).getBody();
+
+        cita.setEstado(EstadoCita.CANCELADA);
+        cita = citaRepository.save(cita);
+        publicarCitaCancelada(cita,
+                "La clínica ha cancelado la cita por causas de fuerza mayor. Se emitió nota de crédito por el 100 % del pago.",
+                ncClinica);
+        return toResponse(cita);
+    }
+
+    // ---- Reagendamiento (CONFIRMADA con ≥24h, o PENDIENTE_PAGO sin restricción de anticipación) ----
 
     @Transactional
     public CitaMedicaResponseDTO reagendar(Long id, ReagendarRequestDTO request) {
         CitaMedica cita = findById(id);
-        validarConfirmadaConAnticipacion(cita, "reagendar");
 
-        // Validar que el nuevo slot existe y está disponible
-        List<SlotDisponibleDTO> slots = calcularDisponibilidad(
-                cita.getIdPersonal(), request.getNuevaFechaHora().toLocalDate());
-        boolean slotLibre = slots.stream()
-                .anyMatch(s -> s.getFechaHora().equals(request.getNuevaFechaHora()));
-        if (!slotLibre) {
+        if (cita.getEstado() == EstadoCita.CONFIRMADA) {
+            if (cita.getFechaHora().minusHours(24).isBefore(LocalDateTime.now())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Solo se puede reagendar una cita CONFIRMADA con al menos 24 horas de anticipación.");
+            }
+        } else if (cita.getEstado() != EstadoCita.PENDIENTE_PAGO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El nuevo bloque horario no está disponible.");
+                    "Solo se puede reagendar una cita en estado PENDIENTE_PAGO o CONFIRMADA.");
+        }
+
+        // 1. Validar que el nuevo slot cae dentro de un turno del médico (igual que crear())
+        LocalDate fechaNueva = request.getNuevaFechaHora().toLocalDate();
+        List<ProgramacionHorarioDTO> horariosDelDia =
+                horariosClient.getHorariosPorPersonal(cita.getIdPersonal(), fechaNueva, fechaNueva).getBody();
+        LocalTime horaSlot = request.getNuevaFechaHora().toLocalTime();
+        boolean dentroDeturno = (horariosDelDia == null ? List.<ProgramacionHorarioDTO>of() : horariosDelDia)
+                .stream()
+                .anyMatch(h -> !horaSlot.isBefore(h.getHoraInicio())
+                        && horaSlot.plusMinutes(20).compareTo(h.getHoraFin()) <= 0);
+        if (!dentroDeturno) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El nuevo bloque horario no corresponde a ningún turno del médico.");
+        }
+
+        // 2. Validar que el slot no está tomado por OTRA cita (excluyendo la actual)
+        Set<LocalDateTime> ocupados = citaRepository
+                .findByIdPersonalAndFechaHoraBetweenAndEstadoNot(
+                        cita.getIdPersonal(),
+                        fechaNueva.atStartOfDay(),
+                        fechaNueva.plusDays(1).atStartOfDay(),
+                        EstadoCita.CANCELADA)
+                .stream()
+                .filter(c -> !c.getId().equals(id))   // excluir la cita que se está reagendando
+                .map(CitaMedica::getFechaHora)
+                .collect(Collectors.toSet());
+        if (ocupados.contains(request.getNuevaFechaHora())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El nuevo bloque horario ya está ocupado por otra cita.");
+        }
+
+        // Validar que el paciente no tenga OTRA cita activa en el nuevo instante
+        if (citaRepository.existsByIdPacienteAndFechaHoraAndEstadoNotAndIdNot(
+                cita.getIdPaciente(), request.getNuevaFechaHora(), EstadoCita.CANCELADA, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El paciente ya tiene otra cita programada en ese mismo horario.");
         }
 
         cita.setFechaHora(request.getNuevaFechaHora());
-        return toResponse(citaRepository.save(cita));
+        cita = citaRepository.save(cita);
+
+        // Notificar al paciente del reagendamiento
+        PacienteDTO paciente = pacientesClient.obtenerPaciente(cita.getIdPaciente()).getBody();
+        PersonalDTO medico = personalClient.obtenerPersonal(cita.getIdPersonal()).getBody();
+        CitaReagendadaEvent evento = new CitaReagendadaEvent(
+                cita.getId(),
+                cita.getIdPaciente(),
+                cita.getIdPersonal(),
+                cita.getFechaHora(),
+                paciente != null ? paciente.getCorreo() : null,
+                true,
+                paciente != null ? (paciente.getNombres() + " " + paciente.getApellidos()) : null,
+                medico != null ? (medico.getNombres() + " " + medico.getApellidos()) : null,
+                medico != null && medico.getMedicoInfo() != null && medico.getMedicoInfo().getEspecialidad() != null
+                        ? medico.getMedicoInfo().getEspecialidad().getNombre() : null
+        );
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_REAGENDADA, evento);
+        log.info("Evento CitaReagendada publicado para cita id={}", cita.getId());
+
+        return toResponse(cita);
     }
 
     // ---- Compensación de Saga (invocado por ms-caja) ----
@@ -249,42 +373,64 @@ public class CitaMedicaService {
 
     // ---- Helpers ----
 
+    // Publica CitaCancelada para que ms-notificaciones avise al paciente. No se publica desde
+    // compensarPagoFallido: es una cancelación técnica de saga, no una decisión del paciente.
+    private void publicarCitaCancelada(CitaMedica cita, String motivo) {
+        publicarCitaCancelada(cita, motivo, null);
+    }
+
+    private void publicarCitaCancelada(CitaMedica cita, String motivo, NotaCreditoClientDTO nc) {
+        PacienteDTO paciente = pacientesClient.obtenerPaciente(cita.getIdPaciente()).getBody();
+        PersonalDTO medico = personalClient.obtenerPersonal(cita.getIdPersonal()).getBody();
+
+        CitaCanceladaEvent evento = new CitaCanceladaEvent(
+                cita.getId(),
+                cita.getIdPaciente(),
+                cita.getFechaHora(),
+                paciente != null ? paciente.getCorreo() : null,
+                true,
+                paciente != null ? (paciente.getNombres() + " " + paciente.getApellidos()) : null,
+                medico != null ? (medico.getNombres() + " " + medico.getApellidos()) : null,
+                medico != null && medico.getMedicoInfo() != null && medico.getMedicoInfo().getEspecialidad() != null
+                        ? medico.getMedicoInfo().getEspecialidad().getNombre() : null,
+                motivo,
+                nc != null ? nc.getNumero() : null,
+                nc != null ? nc.getMonto() : null,
+                nc != null ? nc.getMontoRetenido() : null,
+                nc != null ? nc.getTipo() : null
+        );
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CANCELADA, evento);
+        log.info("Evento CitaCancelada publicado para cita id={}", cita.getId());
+    }
+
     private CitaMedica findById(Long id) {
         CitaMedica cita = citaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Cita no encontrada con id: " + id));
 
-        // Auto-cancelación: cita CONFIRMADA con >15 min de retraso → cancelar en este momento
+        // Auto-cancelación: cita CONFIRMADA con >15 min de retraso → no-show.
+        // Se emite NC del 70 % (penalidad del 30 %) si el pago existe (CONFIRMADA siempre tiene pago).
         if (cita.getEstado() == EstadoCita.CONFIRMADA
                 && cita.getFechaHora().plusMinutes(15).isBefore(LocalDateTime.now())) {
-            log.info("Auto-cancelación por retraso >15 min: cita id={}", id);
+            log.info("Auto-cancelación por no-show (>15 min): cita id={}", id);
             cita.setEstado(EstadoCita.CANCELADA);
             cita = citaRepository.save(cita);
+            // Intentar emitir NC de no-show; si ms-caja no está disponible se loguea y se continúa.
+            NotaCreditoClientDTO ncNoShow = null;
+            try {
+                ncNoShow = cajaClient.emitirNotaCredito(new NotaCreditoRequestDTO(
+                        id,
+                        "No presentación del paciente (auto-cancelación por retraso > 15 min). Se retiene el 30 % como penalidad; se devuelve el 70 %.",
+                        "NO_SHOW")).getBody();
+            } catch (Exception e) {
+                log.warn("No se pudo emitir nota de crédito de no-show para cita id={}: {}", id, e.getMessage());
+            }
+            publicarCitaCancelada(cita,
+                    "Auto-cancelación por no presentación (más de 15 minutos de retraso). Se emitió nota de crédito por el 70 % del pago (penalidad del 30 % retenida).",
+                    ncNoShow);
         }
         return cita;
-    }
-
-    private void validarConfirmadaConAnticipacion(CitaMedica cita, String accion) {
-        if (cita.getEstado() != EstadoCita.CONFIRMADA) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Solo se puede " + accion + " una cita en estado CONFIRMADA.");
-        }
-        if (cita.getFechaHora().minusHours(24).isBefore(LocalDateTime.now())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Solo se puede " + accion + " con al menos 24 horas de anticipación.");
-        }
-    }
-
-    private String mapDayOfWeek(LocalDate fecha) {
-        return switch (fecha.getDayOfWeek()) {
-            case MONDAY    -> "LUNES";
-            case TUESDAY   -> "MARTES";
-            case WEDNESDAY -> "MIERCOLES";
-            case THURSDAY  -> "JUEVES";
-            case FRIDAY    -> "VIERNES";
-            case SATURDAY  -> "SABADO";
-            case SUNDAY    -> "DOMINGO";
-        };
     }
 
     private CitaMedicaResponseDTO toResponse(CitaMedica c) {

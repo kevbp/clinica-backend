@@ -27,7 +27,11 @@ public class Personal {
     @Column(name = "documento_identidad", nullable = false, unique = true)
     private String documentoIdentidad;
 
-    private String contacto;
+    @Column(name = "celular")
+    private String celular;
+
+    @Column(name = "correo")
+    private String correo;
 
     @Column(name = "fecha_ingreso", nullable = false)
     private LocalDate fechaIngreso;
@@ -36,7 +40,7 @@ public class Personal {
     private Boolean estadoActivo = true;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo_personal", nullable = false)
+    @Column(name = "tipo_personal", nullable = false, columnDefinition = "varchar(50)")
     private TipoPersonal tipoPersonal;
 
     @Column(name = "keycloak_user_id", unique = true)

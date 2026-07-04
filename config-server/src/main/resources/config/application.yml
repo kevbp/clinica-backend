@@ -2,7 +2,7 @@
 eureka:
   client:
     service-url:
-      defaultZone: http://eureka-server:8761/eureka/
+      defaultZone: http://localhost:8761/eureka/
   instance:
     prefer-ip-address: true
 
@@ -17,7 +17,7 @@ management:
 
 spring:
   rabbitmq:
-    host: rabbitmq-clinica
+    host: localhost
     port: 5672
     username: ${RABBITMQ_DEFAULT_USER:admin}
     password: ${RABBITMQ_DEFAULT_PASS:change-me-rabbitmq}

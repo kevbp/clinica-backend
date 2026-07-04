@@ -17,7 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Atención Médica",
-        description = "Estación de trabajo digital del médico (CPOE). Borrador transitorio en Redis. Sin precios.")
+        description = "Estación de trabajo CPOE del médico — flujo SOAP. Borrador transitorio en Redis. Sin precios.")
 @RestController
 @RequestMapping("/atenciones")
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class AtencionMedicaController {
     }
 
     @Operation(summary = "Autoguardado del borrador",
-            description = "Reemplaza el estado completo del borrador. Usado para autoguardado incremental mientras el médico trabaja.")
+            description = "Reemplaza el estado completo del borrador. Usado para autoguardado incremental.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Borrador actualizado"),
             @ApiResponse(responseCode = "404", description = "No existe borrador para esta cita")
@@ -68,10 +68,25 @@ public class AtencionMedicaController {
         return ResponseEntity.ok(service.obtenerBorrador(idCita));
     }
 
-    @Operation(summary = "Agregar diagnóstico CIE-10",
-            description = "Agrega o reemplaza el diagnóstico del borrador. Valida formato CIE-10.")
+    @Operation(summary = "Actualizar anamnesis (S+O del SOAP)",
+            description = "Guarda el motivo de consulta y los signos vitales en el borrador.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Diagnóstico agregado",
+            @ApiResponse(responseCode = "200", description = "Anamnesis guardada"),
+            @ApiResponse(responseCode = "404", description = "No existe borrador para esta cita")
+    })
+    @PatchMapping("/{idCita}/anamnesis")
+    public ResponseEntity<BorradorResponseDTO> actualizarAnamnesis(
+            @Parameter(description = "ID de la cita", example = "100", required = true)
+            @PathVariable Long idCita,
+            @RequestBody ActualizarAnamnesisRequestDTO request) {
+        return ResponseEntity.ok(service.actualizarAnamnesis(idCita, request));
+    }
+
+    @Operation(summary = "Agregar / actualizar diagnóstico CIE-10 (A del SOAP)",
+            description = "Agrega o reemplaza el diagnóstico del borrador. Valida formato CIE-10. " +
+                          "Usar el catálogo GET /atenciones/cie10?q= para buscar el código.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Diagnóstico guardado",
                     content = @Content(schema = @Schema(implementation = BorradorResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Código CIE-10 inválido o datos faltantes"),
             @ApiResponse(responseCode = "404", description = "No existe borrador para esta cita")
@@ -84,12 +99,11 @@ public class AtencionMedicaController {
         return ResponseEntity.ok(service.agregarDiagnostico(idCita, request));
     }
 
-    @Operation(summary = "Agregar línea de receta",
-            description = "Agrega un medicamento al borrador. Consulta antecedentes/alergias del paciente " +
-                          "(ms-pacientes) y stock disponible (ms-farmacia) como advertencias al médico. " +
-                          "NO descuenta stock. NO consulta precio.")
+    @Operation(summary = "Agregar línea de receta (P del SOAP)",
+            description = "Agrega un medicamento al borrador con datos estructurados. " +
+                          "Consulta antecedentes/alergias y stock como advertencia. NO descuenta stock. NO consulta precio.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Línea de receta agregada con advertencias",
+            @ApiResponse(responseCode = "200", description = "Línea de receta agregada",
                     content = @Content(schema = @Schema(implementation = AgregarRecetaResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
             @ApiResponse(responseCode = "404", description = "No existe borrador para esta cita"),
@@ -103,14 +117,13 @@ public class AtencionMedicaController {
         return ResponseEntity.ok(service.agregarReceta(idCita, request));
     }
 
-    @Operation(summary = "Agregar línea de orden de laboratorio",
-            description = "Agrega un examen al borrador. Consulta el catálogo de ms-laboratorio para " +
-                          "mostrar nombre/categoría. NO consulta precio. NO crea ExamenAutorizado.")
+    @Operation(summary = "Agregar línea de orden de laboratorio (P del SOAP)",
+            description = "Agrega un examen al borrador. Consulta catálogo de ms-laboratorio. NO consulta precio.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Línea de orden agregada",
                     content = @Content(schema = @Schema(implementation = AgregarOrdenResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
-            @ApiResponse(responseCode = "404", description = "No existe borrador o examen no encontrado en catálogo"),
+            @ApiResponse(responseCode = "404", description = "No existe borrador o examen no encontrado"),
             @ApiResponse(responseCode = "502", description = "ms-laboratorio no disponible")
     })
     @PostMapping("/{idCita}/ordenes-examen")
@@ -122,16 +135,13 @@ public class AtencionMedicaController {
     }
 
     @Operation(summary = "Finalizar atención",
-            description = "Flujo en orden estricto: " +
-                          "(1) Marca cita ATENDIDA en ms-citas (síncrono — si falla, se aborta todo). " +
-                          "(2) Publica EpisodioFinalizado a RabbitMQ para ms-historias-clinicas. " +
-                          "(3) Elimina el borrador de Redis. " +
-                          "El efecto en farmacia/laboratorio ocurre SOLO después, cuando el paciente paga en ms-caja.")
+            description = "Flujo estricto: (1) Marca cita ATENDIDA en ms-citas. " +
+                          "(2) Publica EpisodioFinalizado a RabbitMQ. (3) Elimina borrador de Redis.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Atención finalizada correctamente"),
-            @ApiResponse(responseCode = "400", description = "Borrador sin diagnóstico — no se puede finalizar"),
+            @ApiResponse(responseCode = "400", description = "Borrador sin diagnóstico"),
             @ApiResponse(responseCode = "404", description = "No existe borrador para esta cita"),
-            @ApiResponse(responseCode = "502", description = "ms-citas no disponible — finalización abortada")
+            @ApiResponse(responseCode = "502", description = "ms-citas no disponible")
     })
     @PostMapping("/{idCita}/finalizar")
     public ResponseEntity<BorradorResponseDTO> finalizar(

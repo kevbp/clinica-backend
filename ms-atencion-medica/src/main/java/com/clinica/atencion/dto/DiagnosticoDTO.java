@@ -11,4 +11,7 @@ public class DiagnosticoDTO {
 
     @Schema(description = "Descripción del diagnóstico", example = "Neumonía no especificada")
     private String descripcion;
+
+    @Schema(description = "Tipo de diagnóstico", example = "PRESUNTIVO")
+    private String tipoDiagnostico;
 }

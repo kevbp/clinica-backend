@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 @Data
-@Schema(description = "Diagnóstico a agregar al borrador")
+@Schema(description = "Diagnóstico a agregar al borrador (sección A del SOAP)")
 public class DiagnosticoRequestDTO {
 
     @NotBlank
@@ -20,6 +20,10 @@ public class DiagnosticoRequestDTO {
     @Schema(description = "Descripción clínica del diagnóstico",
             example = "Neumonía no especificada", requiredMode = Schema.RequiredMode.REQUIRED)
     private String descripcion;
+
+    @Schema(description = "Tipo de diagnóstico", example = "PRESUNTIVO",
+            allowableValues = {"PRESUNTIVO", "DEFINITIVO"})
+    private String tipoDiagnostico = "PRESUNTIVO";
 
     @Schema(description = "Observaciones clínicas adicionales del médico",
             example = "Paciente con fiebre 38.5°C, tos productiva")

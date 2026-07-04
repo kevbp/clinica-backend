@@ -8,7 +8,7 @@ spring:
         hc5:
           enabled: true
   datasource:
-    url: jdbc:postgresql://postgres-clinica:5432/db_caja
+    url: jdbc:postgresql://localhost:5432/db_caja
     username: ${POSTGRES_USER:admin}
     password: ${POSTGRES_PASSWORD:change-me-postgres}
     driver-class-name: org.postgresql.Driver

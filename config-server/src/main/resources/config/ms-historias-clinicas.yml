@@ -3,4 +3,4 @@ server:
 
 spring:
   mongodb:
-    uri: mongodb://${MONGO_INITDB_ROOT_USERNAME:admin}:${MONGO_INITDB_ROOT_PASSWORD:change-me-mongo}@mongodb-clinica:27017/db_historias_clinicas?authSource=admin
+    uri: mongodb://${MONGO_INITDB_ROOT_USERNAME:admin}:${MONGO_INITDB_ROOT_PASSWORD:change-me-mongo}@localhost:27017/db_historias_clinicas?authSource=admin

@@ -9,5 +9,6 @@ public class PacienteDTO {
     private String apellidos;
     private String documentoIdentidad;
     private String direccion;
-    private String contacto; // usado como correo en el evento CitaCreada
+    private String celular;
+    private String correo;
 }

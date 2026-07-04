@@ -58,4 +58,34 @@ public class EspecialidadController {
             @PathVariable Long id) {
         return ResponseEntity.ok(especialidadService.obtenerPorId(id));
     }
+
+    @Operation(summary = "Actualizar especialidad", description = "Modifica el nombre o descripción de una especialidad")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Especialidad actualizada",
+                    content = @Content(schema = @Schema(implementation = EspecialidadResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "Especialidad no encontrada")
+    })
+    @PatchMapping("/{id}")
+    public ResponseEntity<EspecialidadResponseDTO> actualizar(
+            @Parameter(description = "ID de la especialidad", example = "1", required = true)
+            @PathVariable Long id,
+            @RequestBody EspecialidadRequestDTO request) {
+        return ResponseEntity.ok(especialidadService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Eliminar especialidad",
+            description = "Elimina una especialidad del catálogo. Falla con 409 si hay médicos asignados.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Especialidad eliminada"),
+            @ApiResponse(responseCode = "404", description = "Especialidad no encontrada"),
+            @ApiResponse(responseCode = "409", description = "Especialidad en uso — tiene médicos asignados")
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminar(
+            @Parameter(description = "ID de la especialidad", example = "1", required = true)
+            @PathVariable Long id) {
+        especialidadService.eliminar(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -23,8 +23,11 @@ public class PagoConsultaRequestDTO {
             requiredMode = Schema.RequiredMode.REQUIRED)
     private Long idPersonalMedico;
 
-    @Schema(description = "Correo o contacto del paciente — se incluirá en el evento PagoConsultaConfirmado " +
-                          "para que ms-notificaciones pueda enviar el correo sin necesitar Feign propio",
+    @Schema(description = "Correo del paciente — se incluirá en el evento PagoConsultaConfirmado",
             example = "paciente@email.com")
     private String correoPaciente;
+
+    @Schema(description = "Nombre completo del paciente — se incluirá en el evento para personalizar el email",
+            example = "María Elena Torres")
+    private String nombrePaciente;
 }

@@ -1,6 +1,7 @@
 package com.clinica.atencion.client;
 
 import com.clinica.atencion.client.dto.AntecedenteClinicoDTO;
+import com.clinica.atencion.client.dto.PacienteDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,4 +14,7 @@ public interface PacientesFeignClient {
 
     @GetMapping("/pacientes/{id}/antecedentes")
     ResponseEntity<List<AntecedenteClinicoDTO>> obtenerAntecedentes(@PathVariable Long id);
+
+    @GetMapping("/pacientes/{id}")
+    ResponseEntity<PacienteDTO> obtenerPaciente(@PathVariable Long id);
 }

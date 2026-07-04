@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Entity
@@ -26,9 +27,10 @@ public class ProgramacionHorario {
     @JoinColumn(name = "id_consultorio", nullable = false)
     private Consultorio consultorio;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "dia_semana", nullable = false)
-    private DiaSemana diaSemana;
+    // Fecha concreta del turno (no recurrente). Habilita historial, edición puntual
+    // y navegación por calendario; ms-citas derivará disponibilidad por fecha real.
+    @Column(name = "fecha", nullable = false)
+    private LocalDate fecha;
 
     @Column(name = "hora_inicio", nullable = false)
     private LocalTime horaInicio;

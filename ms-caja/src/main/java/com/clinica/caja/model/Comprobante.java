@@ -24,6 +24,12 @@ public class Comprobante {
     @Column(name = "id_origen", nullable = false)
     private Long idOrigen; // idPagoConsulta o idProforma
 
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal subtotal;
+
+    @Column(nullable = false, precision = 10, scale = 2)
+    private BigDecimal igv;
+
     @Column(name = "monto_total", nullable = false, precision = 10, scale = 2)
     private BigDecimal montoTotal;
 
@@ -32,4 +38,20 @@ public class Comprobante {
 
     @Column(nullable = false, unique = true)
     private String numero;
+
+    /** ID de la cita médica (solo para tipo CONSULTA). */
+    @Column(name = "id_cita")
+    private Long idCita;
+
+    /** Especialidad médica (solo para tipo CONSULTA). */
+    @Column(name = "especialidad")
+    private String especialidad;
+
+    /** Monto descontado aplicado sobre el total (ej. nota de credito). NULL = sin descuento. */
+    @Column(name = "descuento", precision = 10, scale = 2)
+    private BigDecimal descuento;
+
+    /** Concepto legible del descuento (ej. "Nota de Credito NC-20260703-00001"). */
+    @Column(name = "concepto_descuento")
+    private String conceptoDescuento;
 }

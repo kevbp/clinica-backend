@@ -19,6 +19,7 @@ import java.util.List;
 public class HistoriasClinicasService {
 
     private final MongoTemplate mongoTemplate;
+    private final HistoriaClinicaRepository historiaRepository;
     private final EpisodioClinicoRepository episodioRepository;
     private final RecetaRepository recetaRepository;
     private final OrdenLaboratorioRepository ordenRepository;
@@ -27,19 +28,60 @@ public class HistoriasClinicasService {
     // --- Procesamiento del evento RabbitMQ ---
 
     public void procesarEpisodioFinalizado(EpisodioFinalizadoEvent event) {
+        HistoriaClinica historia = historiaRepository.findByIdPaciente(event.getIdPaciente())
+                .orElseGet(() -> crearHistoria(event.getIdPaciente()));
+
         EpisodioClinico episodio = new EpisodioClinico();
+        episodio.setIdHistoriaClinica(historia.getId());
         episodio.setIdPaciente(event.getIdPaciente());
         episodio.setIdCita(event.getIdCita());
         episodio.setIdPersonalMedico(event.getIdPersonalMedico());
         episodio.setFechaAtencion(LocalDateTime.now());
-
-        Diagnostico diagnostico = new Diagnostico();
-        diagnostico.setCodigoCie10(event.getDiagnostico().getCodigoCie10());
-        diagnostico.setDescripcion(event.getDiagnostico().getDescripcion());
-        episodio.setDiagnostico(diagnostico);
+        episodio.setMotivoConsulta(event.getMotivoConsulta());
         episodio.setObservacionesClinicas(event.getObservacionesClinicas());
 
-        // Insert garantizado — nunca update (inmutabilidad del EHR)
+        if (event.getPaciente() != null) {
+            PacienteSnapshot ps = new PacienteSnapshot();
+            ps.setId(event.getPaciente().getId());
+            ps.setNombres(event.getPaciente().getNombres());
+            ps.setApellidos(event.getPaciente().getApellidos());
+            ps.setDocumentoIdentidad(event.getPaciente().getDocumentoIdentidad());
+            ps.setFechaNacimiento(event.getPaciente().getFechaNacimiento());
+            episodio.setPaciente(ps);
+        }
+
+        if (event.getMedico() != null) {
+            MedicoSnapshot ms = new MedicoSnapshot();
+            ms.setId(event.getMedico().getId());
+            ms.setNombres(event.getMedico().getNombres());
+            ms.setApellidos(event.getMedico().getApellidos());
+            ms.setNumeroColegiatura(event.getMedico().getNumeroColegiatura());
+            ms.setEspecialidad(event.getMedico().getEspecialidad());
+            episodio.setMedico(ms);
+        }
+
+        if (event.getSignosVitales() != null) {
+            var svEvent = event.getSignosVitales();
+            SignosVitales sv = new SignosVitales();
+            sv.setPeso(svEvent.getPeso());
+            sv.setTalla(svEvent.getTalla());
+            sv.setPresionArterial(svEvent.getPresionArterial());
+            sv.setFrecuenciaCardiaca(svEvent.getFrecuenciaCardiaca());
+            sv.setTemperatura(svEvent.getTemperatura());
+            sv.setSaturacionOxigeno(svEvent.getSaturacionOxigeno());
+            sv.setFrecuenciaRespiratoria(svEvent.getFrecuenciaRespiratoria());
+            sv.setImc(svEvent.getImc());
+            episodio.setSignosVitales(sv);
+        }
+
+        if (event.getDiagnostico() != null) {
+            Diagnostico diagnostico = new Diagnostico();
+            diagnostico.setCodigoCie10(event.getDiagnostico().getCodigoCie10());
+            diagnostico.setDescripcion(event.getDiagnostico().getDescripcion());
+            diagnostico.setTipoDiagnostico(event.getDiagnostico().getTipoDiagnostico());
+            episodio.setDiagnostico(diagnostico);
+        }
+
         EpisodioClinico guardado = mongoTemplate.insert(episodio, "episodios_clinicos");
 
         if (event.getReceta() != null && event.getReceta().getLineas() != null) {
@@ -50,7 +92,11 @@ public class HistoriasClinicasService {
             receta.setLineas(event.getReceta().getLineas().stream().map(l -> {
                 LineaReceta lr = new LineaReceta();
                 lr.setIdMedicamento(l.getIdMedicamento());
-                lr.setCantidad(l.getCantidad());
+                lr.setDosis(l.getDosis());
+                lr.setViaAdministracion(l.getViaAdministracion());
+                lr.setFrecuencia(l.getFrecuencia());
+                lr.setDuracion(l.getDuracion());
+                lr.setCantidadTotal(l.getCantidadTotal());
                 lr.setIndicaciones(l.getIndicaciones());
                 return lr;
             }).toList());
@@ -72,12 +118,32 @@ public class HistoriasClinicasService {
         }
     }
 
-    // --- Consultas HTTP ---
+    private HistoriaClinica crearHistoria(Long idPaciente) {
+        HistoriaClinica h = new HistoriaClinica();
+        h.setIdPaciente(idPaciente);
+        h.setCodigoHistoria(String.format("HC-%08d", idPaciente));
+        h.setFechaCreacion(LocalDateTime.now());
+        h.setEstado("ACTIVA");
+        return historiaRepository.save(h);
+    }
+
+    // --- Consultas ---
+
+    public HistoriaClinica obtenerHistoriaPorPaciente(Long idPaciente) {
+        return historiaRepository.findByIdPaciente(idPaciente)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "El paciente id=" + idPaciente + " no tiene historia clínica registrada."));
+    }
+
+    public List<EpisodioClinicoResponseDTO> listarEpisodiosPorHistoria(String idHistoria) {
+        return episodioRepository.findByIdHistoriaClinica(idHistoria).stream()
+                .map(this::toEpisodioResponse).toList();
+    }
 
     public List<EpisodioClinicoResponseDTO> listarPorPaciente(Long idPaciente) {
         return episodioRepository.findByIdPaciente(idPaciente).stream()
-                .map(this::toEpisodioResponse)
-                .toList();
+                .map(this::toEpisodioResponse).toList();
     }
 
     public EpisodioCompletoResponseDTO obtenerCompleto(String id) {
@@ -87,37 +153,37 @@ public class HistoriasClinicasService {
 
         EpisodioCompletoResponseDTO dto = new EpisodioCompletoResponseDTO();
         dto.setIdEpisodio(episodio.getIdEpisodio());
+        dto.setIdHistoriaClinica(episodio.getIdHistoriaClinica());
         dto.setIdPaciente(episodio.getIdPaciente());
         dto.setIdCita(episodio.getIdCita());
         dto.setIdPersonalMedico(episodio.getIdPersonalMedico());
+        dto.setPaciente(episodio.getPaciente());
+        dto.setMedico(episodio.getMedico());
         dto.setFechaAtencion(episodio.getFechaAtencion());
+        dto.setMotivoConsulta(episodio.getMotivoConsulta());
+        dto.setSignosVitales(episodio.getSignosVitales());
         dto.setDiagnostico(toDiagnosticoDTO(episodio.getDiagnostico()));
         dto.setObservacionesClinicas(episodio.getObservacionesClinicas());
 
         dto.setReceta(recetaRepository.findByIdEpisodioClinico(id)
                 .map(this::toRecetaResponse).orElse(null));
-
         dto.setOrdenLaboratorio(ordenRepository.findByIdEpisodioClinico(id)
                 .map(this::toOrdenResponse).orElse(null));
-
         dto.setAdendas(adendaRepository
                 .findByIdEpisodioPadreOrderByFechaCorreccionAsc(id).stream()
-                .map(this::toAdendaResponse)
-                .toList());
+                .map(this::toAdendaResponse).toList());
 
         return dto;
     }
 
     public List<RecetaResponseDTO> listarRecetasPorPaciente(Long idPaciente) {
         return recetaRepository.findByIdPaciente(idPaciente).stream()
-                .map(this::toRecetaResponse)
-                .toList();
+                .map(this::toRecetaResponse).toList();
     }
 
     public List<OrdenLaboratorioResponseDTO> listarOrdenesPorPaciente(Long idPaciente) {
         return ordenRepository.findByIdPaciente(idPaciente).stream()
-                .map(this::toOrdenResponse)
-                .toList();
+                .map(this::toOrdenResponse).toList();
     }
 
     public RecetaResponseDTO obtenerRecetaPorId(String id) {
@@ -141,8 +207,7 @@ public class HistoriasClinicasService {
                         "Episodio clínico no encontrado con id: " + request.getIdEpisodioPadre()));
 
         if (!episodio.getIdPersonalMedico().equals(request.getIdPersonalMedico())) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Solo el médico autor del episodio puede registrar una adenda sobre él.");
         }
 
@@ -160,10 +225,14 @@ public class HistoriasClinicasService {
     private EpisodioClinicoResponseDTO toEpisodioResponse(EpisodioClinico e) {
         EpisodioClinicoResponseDTO dto = new EpisodioClinicoResponseDTO();
         dto.setIdEpisodio(e.getIdEpisodio());
+        dto.setIdHistoriaClinica(e.getIdHistoriaClinica());
         dto.setIdPaciente(e.getIdPaciente());
         dto.setIdCita(e.getIdCita());
         dto.setIdPersonalMedico(e.getIdPersonalMedico());
+        dto.setPaciente(e.getPaciente());
+        dto.setMedico(e.getMedico());
         dto.setFechaAtencion(e.getFechaAtencion());
+        dto.setMotivoConsulta(e.getMotivoConsulta());
         dto.setDiagnostico(toDiagnosticoDTO(e.getDiagnostico()));
         dto.setObservacionesClinicas(e.getObservacionesClinicas());
         return dto;
@@ -174,6 +243,7 @@ public class HistoriasClinicasService {
         DiagnosticoDTO dto = new DiagnosticoDTO();
         dto.setCodigoCie10(d.getCodigoCie10());
         dto.setDescripcion(d.getDescripcion());
+        dto.setTipoDiagnostico(d.getTipoDiagnostico());
         return dto;
     }
 
@@ -187,7 +257,11 @@ public class HistoriasClinicasService {
                 r.getLineas().stream().map(l -> {
                     LineaRecetaResponseDTO ld = new LineaRecetaResponseDTO();
                     ld.setIdMedicamento(l.getIdMedicamento());
-                    ld.setCantidad(l.getCantidad());
+                    ld.setDosis(l.getDosis());
+                    ld.setViaAdministracion(l.getViaAdministracion());
+                    ld.setFrecuencia(l.getFrecuencia());
+                    ld.setDuracion(l.getDuracion());
+                    ld.setCantidadTotal(l.getCantidadTotal());
                     ld.setIndicaciones(l.getIndicaciones());
                     return ld;
                 }).toList());

@@ -18,7 +18,13 @@ public class BorradorResponseDTO {
     @Schema(description = "ID del médico", example = "5")
     private Long idPersonalMedico;
 
-    @Schema(description = "Diagnóstico CIE-10 (null si aún no se ha ingresado)")
+    @Schema(description = "Motivo de consulta (S — Subjetivo)")
+    private String motivoConsulta;
+
+    @Schema(description = "Signos vitales (O — Objetivo)")
+    private SignosVitalesDTO signosVitales;
+
+    @Schema(description = "Diagnóstico CIE-10 (A — Evaluación; null si aún no se ha ingresado)")
     private DiagnosticoDTO diagnostico;
 
     @Schema(description = "Observaciones clínicas libres")

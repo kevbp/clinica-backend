@@ -1,13 +1,13 @@
 package com.clinica.horarios.dto;
 
-import com.clinica.horarios.model.DiaSemana;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Data
-@Schema(description = "Turno maestro de programación horaria")
+@Schema(description = "Turno de programación horaria en una fecha concreta")
 public class ProgramacionHorarioResponseDTO {
 
     @Schema(description = "ID interno del turno", example = "10")
@@ -19,12 +19,15 @@ public class ProgramacionHorarioResponseDTO {
     @Schema(description = "Consultorio físico asignado")
     private ConsultorioResponseDTO consultorio;
 
-    @Schema(description = "Día de la semana", example = "LUNES")
-    private DiaSemana diaSemana;
+    @Schema(description = "Fecha concreta del turno", example = "2026-07-06")
+    private LocalDate fecha;
 
     @Schema(description = "Hora de inicio del turno", example = "08:00")
     private LocalTime horaInicio;
 
     @Schema(description = "Hora de fin del turno", example = "13:00")
     private LocalTime horaFin;
+
+    @Schema(description = "Indica si la fecha del turno ya pasó (no editable/eliminable)", example = "false")
+    private Boolean esPasado;
 }

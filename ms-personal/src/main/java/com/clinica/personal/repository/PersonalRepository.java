@@ -13,6 +13,8 @@ public interface PersonalRepository extends JpaRepository<Personal, Long> {
 
     Optional<Personal> findByKeycloakUserId(String keycloakUserId);
 
+    long countByTipoPersonalAndEstadoActivo(TipoPersonal tipoPersonal, Boolean estadoActivo);
+
     @Query("""
             SELECT p FROM Personal p
             WHERE (:nombre IS NULL OR LOWER(CONCAT(p.nombres, ' ', p.apellidos)) LIKE LOWER(CONCAT('%', :nombre, '%')))

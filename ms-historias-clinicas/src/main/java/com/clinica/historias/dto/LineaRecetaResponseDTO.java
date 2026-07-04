@@ -10,9 +10,21 @@ public class LineaRecetaResponseDTO {
     @Schema(description = "ID del medicamento en ms-farmacia", example = "104")
     private Long idMedicamento;
 
-    @Schema(description = "Cantidad prescrita", example = "20")
-    private Integer cantidad;
+    @Schema(description = "Dosis por toma", example = "500 mg")
+    private String dosis;
 
-    @Schema(description = "Indicaciones de administración", example = "1 tableta cada 8 horas por 7 días")
+    @Schema(description = "Vía de administración", example = "Oral")
+    private String viaAdministracion;
+
+    @Schema(description = "Frecuencia de administración", example = "Cada 8 horas")
+    private String frecuencia;
+
+    @Schema(description = "Duración del tratamiento", example = "7 días")
+    private String duracion;
+
+    @Schema(description = "Cantidad total de unidades a dispensar", example = "21")
+    private Integer cantidadTotal;
+
+    @Schema(description = "Instrucciones adicionales para el paciente")
     private String indicaciones;
 }

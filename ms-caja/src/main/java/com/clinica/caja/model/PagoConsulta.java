@@ -3,9 +3,8 @@ package com.clinica.caja.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
-
 import java.math.BigDecimal;
+import lombok.Setter;
 
 @Entity
 @Table(name = "pagos_consulta")
@@ -29,8 +28,16 @@ public class PagoConsulta {
     @Column(nullable = false)
     private EstadoPagoConsulta estado;
 
-    // Almacenado al crear para incluirlo en el evento PagoConsultaConfirmado
-    // (ms-notificaciones no tiene Feign propio — el emisor resuelve el dato)
     @Column(name = "correo_paciente")
     private String correoPaciente;
+
+    @Column(name = "nombre_paciente")
+    private String nombrePaciente;
+
+    @Column(name = "especialidad")
+    private String especialidad;
+
+    /** Credito de NC aplicado. NULL = sin credito (filas previas). */
+    @Column(name = "monto_credito_aplicado", precision = 10, scale = 2)
+    private BigDecimal montoCreditoAplicado;
 }

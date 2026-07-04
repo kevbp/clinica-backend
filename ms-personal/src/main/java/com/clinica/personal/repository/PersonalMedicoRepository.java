@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface PersonalMedicoRepository extends JpaRepository<PersonalMedico, Long> {
 
     Optional<PersonalMedico> findByPersonalId(Long personalId);
+
+    boolean existsByEspecialidadId(Long especialidadId);
 }

@@ -26,4 +26,8 @@ public class CitaMedicaRequestDTO {
     @Schema(description = "Fecha y hora deseada para la cita (debe ser futura y coincidir con un bloque de 20 min disponible)",
             example = "2024-07-10T09:00:00", requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDateTime fechaHora;
+
+    @Schema(description = "Si se debe notificar por correo al paciente al agendar (vía evento CitaCreada). Por defecto true.",
+            example = "true", defaultValue = "true")
+    private Boolean notificarCorreo = true;
 }

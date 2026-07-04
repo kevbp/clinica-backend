@@ -6,13 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
-@Schema(description = "Datos para registrar la extensión médica de un Personal de tipo MEDICO")
+@Schema(description = "Datos para registrar la extensión médica. El ID del personal se indica en la URL.")
 public class PersonalMedicoRequestDTO {
-
-    @NotNull
-    @Schema(description = "ID del Personal existente (debe tener tipoPersonal = MEDICO)",
-            example = "5", requiredMode = Schema.RequiredMode.REQUIRED)
-    private Long idPersonal;
 
     @NotBlank
     @Schema(description = "Número de colegiatura médica (CMP)",

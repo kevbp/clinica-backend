@@ -1,14 +1,14 @@
 package com.clinica.horarios.dto;
 
-import com.clinica.horarios.model.DiaSemana;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 
 @Data
-@Schema(description = "Datos para crear un turno maestro de programación horaria")
+@Schema(description = "Datos para crear un turno de programación horaria en una fecha concreta")
 public class ProgramacionHorarioRequestDTO {
 
     @NotNull
@@ -22,9 +22,9 @@ public class ProgramacionHorarioRequestDTO {
     private Long idConsultorio;
 
     @NotNull
-    @Schema(description = "Día de la semana",
-            example = "LUNES", requiredMode = Schema.RequiredMode.REQUIRED)
-    private DiaSemana diaSemana;
+    @Schema(description = "Fecha concreta del turno. No puede ser anterior a hoy.",
+            example = "2026-07-06", requiredMode = Schema.RequiredMode.REQUIRED)
+    private LocalDate fecha;
 
     @NotNull
     @Schema(description = "Hora de inicio del turno", example = "08:00",

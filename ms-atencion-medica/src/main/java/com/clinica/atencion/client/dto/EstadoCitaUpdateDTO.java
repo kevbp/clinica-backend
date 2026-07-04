@@ -6,5 +6,5 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class EstadoCitaUpdateDTO {
-    private String estado; // "ATENDIDA"
+    private EstadoCitaEnum estado;
 }

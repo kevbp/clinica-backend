@@ -14,4 +14,6 @@ public interface EpisodioClinicoRepository extends Repository<EpisodioClinico, S
     Optional<EpisodioClinico> findById(String id);
 
     List<EpisodioClinico> findByIdPaciente(Long idPaciente);
+
+    List<EpisodioClinico> findByIdHistoriaClinica(String idHistoriaClinica);
 }

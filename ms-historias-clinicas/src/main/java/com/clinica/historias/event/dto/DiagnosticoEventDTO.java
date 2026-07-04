@@ -6,4 +6,5 @@ import lombok.Data;
 public class DiagnosticoEventDTO {
     private String codigoCie10;
     private String descripcion;
+    private String tipoDiagnostico;
 }

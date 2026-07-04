@@ -10,6 +10,12 @@ public class PersonalMedicoResponseDTO {
     @Schema(description = "ID del Personal al que pertenece esta extensión", example = "5")
     private Long idPersonal;
 
+    @Schema(description = "Nombres del médico", example = "Carlos Alberto")
+    private String nombres;
+
+    @Schema(description = "Apellidos del médico", example = "Ramírez Soto")
+    private String apellidos;
+
     @Schema(description = "Número de colegiatura médica (CMP)", example = "CMP-12345")
     private String numeroColegiatura;
 

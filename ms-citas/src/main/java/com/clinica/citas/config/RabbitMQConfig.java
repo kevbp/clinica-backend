@@ -11,8 +11,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String EXCHANGE_CITAS      = "citas.events";
-    public static final String ROUTING_KEY_CREADA  = "cita.creada";
+    public static final String EXCHANGE_CITAS        = "citas.events";
+    public static final String ROUTING_KEY_CREADA      = "cita.creada";
+    public static final String ROUTING_KEY_CANCELADA   = "cita.cancelada";
+    public static final String ROUTING_KEY_REAGENDADA  = "cita.reagendada";
 
     @Bean
     public TopicExchange citasExchange() {

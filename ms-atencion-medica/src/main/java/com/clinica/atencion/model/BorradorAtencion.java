@@ -16,9 +16,17 @@ public class BorradorAtencion {
     private Long idPaciente;
     private Long idPersonalMedico;
 
+    // S — Subjetivo
+    private String motivoConsulta;
+
+    // O — Objetivo
+    private SignosVitalesBorrador signosVitales;
+
+    // A — Evaluación
     private DiagnosticoBorrador diagnostico;
     private String observacionesClinicas;
 
-    private List<LineaRecetaBorrador> lineasReceta   = new ArrayList<>();
-    private List<LineaOrdenBorrador>  lineasOrden    = new ArrayList<>();
+    // P — Plan
+    private List<LineaRecetaBorrador> lineasReceta = new ArrayList<>();
+    private List<LineaOrdenBorrador>  lineasOrden  = new ArrayList<>();
 }

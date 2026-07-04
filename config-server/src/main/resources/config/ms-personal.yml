@@ -3,7 +3,7 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://postgres-clinica:5432/db_personal
+    url: jdbc:postgresql://localhost:5432/db_personal
     username: ${POSTGRES_USER:admin}
     password: ${POSTGRES_PASSWORD:change-me-postgres}
     driver-class-name: org.postgresql.Driver

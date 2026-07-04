@@ -2,6 +2,7 @@ package com.clinica.horarios.controller;
 
 import com.clinica.horarios.dto.ConsultorioRequestDTO;
 import com.clinica.horarios.dto.ConsultorioResponseDTO;
+import com.clinica.horarios.dto.ConsultorioUpdateRequestDTO;
 import com.clinica.horarios.service.ConsultorioService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -60,5 +61,35 @@ public class ConsultorioController {
             @Parameter(description = "ID interno del consultorio", example = "1", required = true)
             @PathVariable Long id) {
         return ResponseEntity.ok(consultorioService.obtenerPorId(id));
+    }
+
+    @Operation(summary = "Actualizar consultorio",
+            description = "Actualización parcial. Solo se modifican los campos presentes en el body (no nulos).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Consultorio actualizado",
+                    content = @Content(schema = @Schema(implementation = ConsultorioResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Consultorio no encontrado")
+    })
+    @PatchMapping("/{id}")
+    public ResponseEntity<ConsultorioResponseDTO> actualizar(
+            @Parameter(description = "ID interno del consultorio", example = "1", required = true)
+            @PathVariable Long id,
+            @RequestBody ConsultorioUpdateRequestDTO request) {
+        return ResponseEntity.ok(consultorioService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Eliminar consultorio",
+            description = "Elimina un consultorio físico. Falla con 409 si tiene turnos de programación asignados.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Consultorio eliminado"),
+            @ApiResponse(responseCode = "404", description = "Consultorio no encontrado"),
+            @ApiResponse(responseCode = "409", description = "El consultorio tiene turnos de programación asignados")
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminar(
+            @Parameter(description = "ID interno del consultorio", example = "1", required = true)
+            @PathVariable Long id) {
+        consultorioService.eliminar(id);
+        return ResponseEntity.noContent().build();
     }
 }

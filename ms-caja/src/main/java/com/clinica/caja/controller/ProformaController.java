@@ -62,7 +62,7 @@ public class ProformaController {
                     content = @Content(schema = @Schema(implementation = ProformaResponseDTO.class))),
             @ApiResponse(responseCode = "502", description = "Dependencia no disponible")
     })
-    @GetMapping("/paciente/{idPaciente}")
+    @PostMapping("/paciente/{idPaciente}")
     public ResponseEntity<ProformaResponseDTO> construir(
             @Parameter(description = "ID del paciente", example = "42", required = true)
             @PathVariable Long idPaciente) {

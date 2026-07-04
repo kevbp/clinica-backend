@@ -24,4 +24,10 @@ public class PagoConsultaResponseDTO {
 
     @Schema(description = "Estado del pago", example = "PENDIENTE")
     private EstadoPagoConsulta estado;
+
+    @Schema(description = "Crédito de NC aplicado", example = "80.00")
+    private BigDecimal montoCreditoAplicado;
+
+    @Schema(description = "Monto real a cobrar (monto - montoCreditoAplicado)", example = "0.00")
+    private BigDecimal montoACobrar;
 }

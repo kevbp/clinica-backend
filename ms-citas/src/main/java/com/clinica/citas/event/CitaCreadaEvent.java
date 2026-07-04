@@ -14,4 +14,8 @@ public class CitaCreadaEvent {
     private Long idConsultorio;
     private LocalDateTime fechaHora;
     private String correoPaciente; // contacto del paciente, usado por ms-notificaciones
+    private boolean notificar; // si es false, ms-notificaciones omite el envío del correo
+    private String nombrePaciente;
+    private String nombreMedico;
+    private String especialidad; // null si el médico no tiene especialidad asignada
 }

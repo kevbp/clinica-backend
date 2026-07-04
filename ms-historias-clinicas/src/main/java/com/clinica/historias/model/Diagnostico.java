@@ -8,4 +8,6 @@ import lombok.NoArgsConstructor;
 public class Diagnostico {
     private String codigoCie10;
     private String descripcion;
+    /** PRESUNTIVO | DEFINITIVO */
+    private String tipoDiagnostico;
 }

@@ -22,8 +22,11 @@ public class PersonalResponseDTO {
     @Schema(description = "Número de documento de identidad", example = "12345678")
     private String documentoIdentidad;
 
-    @Schema(description = "Teléfono o email de contacto", example = "987654321")
-    private String contacto;
+    @Schema(description = "Número de celular", example = "987654321")
+    private String celular;
+
+    @Schema(description = "Correo electrónico", example = "carlos.perez@clinica.pe")
+    private String correo;
 
     @Schema(description = "Fecha de ingreso", example = "2024-01-15")
     private LocalDate fechaIngreso;

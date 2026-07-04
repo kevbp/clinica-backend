@@ -8,7 +8,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@Schema(description = "Solicitud de reagendamiento de una cita CONFIRMADA")
+@Schema(description = "Solicitud de reagendamiento de una cita (PENDIENTE_PAGO o CONFIRMADA)")
 public class ReagendarRequestDTO {
 
     @NotNull

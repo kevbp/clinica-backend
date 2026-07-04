@@ -2,15 +2,23 @@ package com.clinica.caja.service;
 
 import com.clinica.caja.client.CitasFeignClient;
 import com.clinica.caja.client.PersonalFeignClient;
+import com.clinica.caja.client.dto.EstadoCitaEnum;
 import com.clinica.caja.client.dto.EstadoCitaUpdateDTO;
 import com.clinica.caja.client.dto.PersonalDTO;
 import com.clinica.caja.config.RabbitMQConfig;
+import com.clinica.caja.dto.ComprobanteResponseDTO;
 import com.clinica.caja.dto.PagoConsultaRequestDTO;
 import com.clinica.caja.dto.PagoConsultaResponseDTO;
 import com.clinica.caja.event.PagoConsultaConfirmadoEvent;
+import com.clinica.caja.model.Comprobante;
 import com.clinica.caja.model.EstadoPagoConsulta;
 import com.clinica.caja.model.PagoConsulta;
 import com.clinica.caja.model.TarifaConsulta;
+import com.clinica.caja.model.TipoComprobante;
+import com.clinica.caja.model.EstadoNotaCredito;
+import com.clinica.caja.model.NotaCredito;
+import com.clinica.caja.repository.ComprobanteRepository;
+import com.clinica.caja.repository.NotaCreditoRepository;
 import com.clinica.caja.repository.PagoConsultaRepository;
 import com.clinica.caja.repository.TarifaConsultaRepository;
 import feign.FeignException;
@@ -22,6 +30,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -31,6 +43,8 @@ public class PagoConsultaService {
 
     private final PagoConsultaRepository    pagoRepository;
     private final TarifaConsultaRepository  tarifaRepository;
+    private final ComprobanteRepository     comprobanteRepository;
+    private final NotaCreditoRepository     notaCreditoRepository;
     private final PersonalFeignClient       personalClient;
     private final CitasFeignClient          citasClient;
     private final RabbitTemplate            rabbitTemplate;
@@ -64,6 +78,7 @@ public class PagoConsultaService {
         }
 
         Long idEspecialidad = personal.getMedicoInfo().getEspecialidad().getId();
+        String nombreEspecialidad = personal.getMedicoInfo().getEspecialidad().getNombre();
         TarifaConsulta tarifa = tarifaRepository.findById(idEspecialidad)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No existe tarifa de consulta para la especialidad " + idEspecialidad));
@@ -73,6 +88,8 @@ public class PagoConsultaService {
         pago.setIdPaciente(request.getIdPaciente());
         pago.setMonto(tarifa.getMonto());
         pago.setCorreoPaciente(request.getCorreoPaciente());
+        pago.setNombrePaciente(request.getNombrePaciente());
+        pago.setEspecialidad(nombreEspecialidad);
         pago.setEstado(EstadoPagoConsulta.PENDIENTE);
 
         return toResponse(pagoRepository.save(pago));
@@ -115,20 +132,76 @@ public class PagoConsultaService {
             return toResponse(pago);
         }
 
+        // Boleta automática: el monto real cobrado es monto - crédito aplicado
+        BigDecimal credito = pago.getMontoCreditoAplicado() != null ? pago.getMontoCreditoAplicado() : BigDecimal.ZERO;
+        BigDecimal montoACobrar = pago.getMonto().subtract(credito).max(BigDecimal.ZERO);
+        BigDecimal subtotal = calcularSubtotal(montoACobrar);
+        LocalDateTime fechaEmision = LocalDateTime.now();
+
+        Comprobante comprobante = new Comprobante();
+        comprobante.setTipo(TipoComprobante.CONSULTA);
+        comprobante.setIdOrigen(pago.getId());
+        comprobante.setIdCita(pago.getIdCita());
+        comprobante.setEspecialidad(pago.getEspecialidad());
+        comprobante.setSubtotal(subtotal);
+        comprobante.setIgv(montoACobrar.subtract(subtotal));
+        comprobante.setMontoTotal(montoACobrar);
+        comprobante.setFechaEmision(fechaEmision);
+        comprobante.setNumero("BC-" + System.currentTimeMillis());
+        if (credito.compareTo(BigDecimal.ZERO) > 0) {
+            comprobante.setDescuento(credito);
+            comprobante.setConceptoDescuento("Nota de Credito aplicada");
+        }
+        comprobanteRepository.save(comprobante);
+        log.info("Boleta {} emitida para pago de consulta id={}", comprobante.getNumero(), pago.getId());
+
         // Publicar PagoConsultaConfirmado hacia RabbitMQ (ms-notificaciones escucha)
+        PagoConsultaConfirmadoEvent evento = new PagoConsultaConfirmadoEvent(
+                pago.getIdCita(), pago.getIdPaciente(), pago.getMonto(),
+                pago.getCorreoPaciente(), pago.getNombrePaciente(),
+                comprobante.getNumero(), comprobante.getSubtotal(), comprobante.getIgv(),
+                comprobante.getMontoTotal(), comprobante.getDescuento(), comprobante.getConceptoDescuento(),
+                fechaEmision, pago.getEspecialidad());
         rabbitTemplate.convertAndSend(
                 RabbitMQConfig.EXCHANGE_CAJA,
                 RabbitMQConfig.ROUTING_KEY_PAGO_CONFIRMADO,
-                new PagoConsultaConfirmadoEvent(pago.getIdCita(), pago.getIdPaciente(), pago.getMonto(), pago.getCorreoPaciente()));
+                evento);
         log.info("Saga 14.1 completada: cita={} CONFIRMADA, evento PagoConsultaConfirmado publicado", pago.getIdCita());
 
         return toResponse(pago);
     }
 
+    @Transactional(readOnly = true)
+    public ComprobanteResponseDTO obtenerComprobante(Long idPago) {
+        Comprobante comprobante = comprobanteRepository.findByTipoAndIdOrigen(TipoComprobante.CONSULTA, idPago)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Aún no se ha emitido boleta para el pago de consulta id: " + idPago));
+        return toComprobanteResponse(comprobante);
+    }
+
+    private ComprobanteResponseDTO toComprobanteResponse(Comprobante c) {
+        ComprobanteResponseDTO dto = new ComprobanteResponseDTO();
+        dto.setId(c.getId());
+        dto.setTipo(c.getTipo());
+        dto.setIdOrigen(c.getIdOrigen());
+        dto.setSubtotal(c.getSubtotal());
+        dto.setIgv(c.getIgv());
+        dto.setMontoTotal(c.getMontoTotal());
+        dto.setFechaEmision(c.getFechaEmision());
+        dto.setNumero(c.getNumero());
+        return dto;
+    }
+
+    // IGV peruano: precio almacenado ya incluye el 18%.
+    // subtotal = total / 1.18 redondeado a 2 decimales; igv = total - subtotal.
+    private static BigDecimal calcularSubtotal(BigDecimal total) {
+        return total.divide(new BigDecimal("1.18"), 2, RoundingMode.HALF_UP);
+    }
+
     private boolean intentarConfirmarCita(Long idCita) {
         for (int intento = 1; intento <= MAX_REINTENTOS_CONFIRMAR; intento++) {
             try {
-                citasClient.actualizarEstado(idCita, new EstadoCitaUpdateDTO("CONFIRMADA"));
+                citasClient.actualizarEstado(idCita, new EstadoCitaUpdateDTO(EstadoCitaEnum.CONFIRMADA));
                 return true;
             } catch (FeignException ex) {
                 log.warn("Reintento {}/{} al confirmar cita={}: {}", intento, MAX_REINTENTOS_CONFIRMAR, idCita, ex.getMessage());
@@ -142,6 +215,32 @@ public class PagoConsultaService {
         dto.setId(p.getId()); dto.setIdCita(p.getIdCita());
         dto.setIdPaciente(p.getIdPaciente()); dto.setMonto(p.getMonto());
         dto.setEstado(p.getEstado());
+        BigDecimal credito = p.getMontoCreditoAplicado() != null ? p.getMontoCreditoAplicado() : BigDecimal.ZERO;
+        dto.setMontoCreditoAplicado(credito);
+        dto.setMontoACobrar(p.getMonto().subtract(credito).max(BigDecimal.ZERO));
         return dto;
+    }
+
+    @Transactional
+    public PagoConsultaResponseDTO aplicarCredito(Long idPago, Long idNotaCredito) {
+        PagoConsulta pago = pagoRepository.findById(idPago)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "PagoConsulta no encontrado: " + idPago));
+        if (pago.getEstado() != EstadoPagoConsulta.PENDIENTE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Solo se puede aplicar crédito a un pago PENDIENTE.");
+        }
+        NotaCredito nc = notaCreditoRepository.findById(idNotaCredito)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nota de crédito no encontrada: " + idNotaCredito));
+        if (!nc.getIdPaciente().equals(pago.getIdPaciente())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La nota de crédito no pertenece al paciente del pago.");
+        }
+        if (nc.getEstado() != EstadoNotaCredito.DISPONIBLE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La nota de crédito no está disponible (estado: " + nc.getEstado() + ").");
+        }
+        BigDecimal creditoActual = pago.getMontoCreditoAplicado() != null ? pago.getMontoCreditoAplicado() : BigDecimal.ZERO;
+        BigDecimal nuevoCreditoTotal = creditoActual.add(nc.getMonto()).min(pago.getMonto());
+        pago.setMontoCreditoAplicado(nuevoCreditoTotal);
+        nc.setEstado(EstadoNotaCredito.USADA);
+        notaCreditoRepository.save(nc);
+        return toResponse(pagoRepository.save(pago));
     }
 }

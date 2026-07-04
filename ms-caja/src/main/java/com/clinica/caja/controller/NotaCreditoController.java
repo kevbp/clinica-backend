@@ -1,5 +1,6 @@
 package com.clinica.caja.controller;
 
+import com.clinica.caja.dto.EnviarCorreoRequestDTO;
 import com.clinica.caja.dto.NotaCreditoRequestDTO;
 import com.clinica.caja.dto.NotaCreditoResponseDTO;
 import com.clinica.caja.service.NotaCreditoService;
@@ -40,8 +41,9 @@ public class NotaCreditoController {
     }
 
     @Operation(summary = "Emitir nota de crédito",
-            description = "Invocado síncronamente por ms-citas al cancelar una cita CONFIRMADA " +
-                          "con ≥24h de anticipación. El monto es igual al PagoConsulta original.")
+            description = "Invocado síncronamente por ms-citas al cancelar una cita CONFIRMADA. " +
+                          "El tipo determina el porcentaje: CANCELACION_ANTICIPADA/CANCELACION_POR_CLINICA/ERROR_COBRO " +
+                          "→ 100 %; CANCELACION_TARDIA/NO_SHOW → 70 % (penalidad 30 %).")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Nota de crédito emitida",
                     content = @Content(schema = @Schema(implementation = NotaCreditoResponseDTO.class))),
@@ -52,5 +54,18 @@ public class NotaCreditoController {
     public ResponseEntity<NotaCreditoResponseDTO> emitir(
             @Valid @RequestBody NotaCreditoRequestDTO request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(notaCreditoService.emitir(request));
+    }
+
+    @Operation(summary = "Enviar NC por correo electrónico")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Envío solicitado"),
+            @ApiResponse(responseCode = "404", description = "NC no encontrada")
+    })
+    @PostMapping("/{id}/enviar-correo")
+    public ResponseEntity<Void> enviarPorCorreo(
+            @PathVariable Long id,
+            @Valid @RequestBody EnviarCorreoRequestDTO request) {
+        notaCreditoService.enviarPorCorreo(id, request.getCorreo());
+        return ResponseEntity.noContent().build();
     }
 }

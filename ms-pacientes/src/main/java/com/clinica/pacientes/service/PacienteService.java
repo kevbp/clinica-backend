@@ -30,8 +30,13 @@ public class PacienteService {
         paciente.setDocumentoIdentidad(request.getDocumentoIdentidad());
         paciente.setNombres(request.getNombres());
         paciente.setApellidos(request.getApellidos());
+        paciente.setFechaNacimiento(request.getFechaNacimiento());
         paciente.setDireccion(request.getDireccion());
-        paciente.setContacto(request.getContacto());
+        paciente.setCelular(request.getCelular());
+        paciente.setCorreo(request.getCorreo());
+        paciente.setSexo(request.getSexo());
+        paciente.setGrupoSanguineo(request.getGrupoSanguineo());
+        paciente.setEstadoActivo(true);
         return toResponse(pacienteRepository.save(paciente));
     }
 
@@ -45,10 +50,26 @@ public class PacienteService {
     @Transactional
     public PacienteResponseDTO actualizar(Long id, PacienteUpdateRequestDTO request) {
         Paciente paciente = findById(id);
-        if (request.getNombres()   != null) paciente.setNombres(request.getNombres());
-        if (request.getApellidos() != null) paciente.setApellidos(request.getApellidos());
-        if (request.getDireccion() != null) paciente.setDireccion(request.getDireccion());
-        if (request.getContacto()  != null) paciente.setContacto(request.getContacto());
+        // Campos requeridos: solo actualizar si vienen en el request
+        if (request.getNombres()         != null) paciente.setNombres(request.getNombres());
+        if (request.getApellidos()       != null) paciente.setApellidos(request.getApellidos());
+        if (request.getFechaNacimiento() != null) paciente.setFechaNacimiento(request.getFechaNacimiento());
+        // Campos opcionales nullable: null explícito = limpiar el campo
+        // (el frontend envía null cuando el usuario borra el valor del campo)
+        if (request.getSexo()           != null) paciente.setSexo(request.getSexo());
+        if (request.getGrupoSanguineo() != null) paciente.setGrupoSanguineo(request.getGrupoSanguineo());
+        paciente.setDireccion(request.getDireccion());
+        paciente.setCelular(request.getCelular());
+        paciente.setCorreo(request.getCorreo());
+        paciente.setNombreBanco(request.getNombreBanco());
+        paciente.setNumeroCuenta(request.getNumeroCuenta());
+        return toResponse(pacienteRepository.save(paciente));
+    }
+
+    @Transactional
+    public PacienteResponseDTO cambiarEstado(Long id, boolean activo) {
+        Paciente paciente = findById(id);
+        paciente.setEstadoActivo(activo);
         return toResponse(pacienteRepository.save(paciente));
     }
 
@@ -111,8 +132,15 @@ public class PacienteService {
         dto.setDocumentoIdentidad(p.getDocumentoIdentidad());
         dto.setNombres(p.getNombres());
         dto.setApellidos(p.getApellidos());
+        dto.setFechaNacimiento(p.getFechaNacimiento());
         dto.setDireccion(p.getDireccion());
-        dto.setContacto(p.getContacto());
+        dto.setCelular(p.getCelular());
+        dto.setCorreo(p.getCorreo());
+        dto.setEstadoActivo(p.getEstadoActivo());
+        dto.setSexo(p.getSexo());
+        dto.setGrupoSanguineo(p.getGrupoSanguineo());
+        dto.setNombreBanco(p.getNombreBanco());
+        dto.setNumeroCuenta(p.getNumeroCuenta());
         return dto;
     }
 

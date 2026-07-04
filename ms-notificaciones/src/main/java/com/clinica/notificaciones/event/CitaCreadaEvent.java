@@ -13,4 +13,8 @@ public class CitaCreadaEvent {
     private Long idConsultorio;
     private LocalDateTime fechaHora;
     private String correoPaciente;
+    private boolean notificar;
+    private String nombrePaciente;
+    private String nombreMedico;
+    private String especialidad;
 }

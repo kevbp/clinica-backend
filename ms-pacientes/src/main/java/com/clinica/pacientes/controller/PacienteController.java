@@ -107,8 +107,34 @@ public class PacienteController {
     public ResponseEntity<PacienteResponseDTO> actualizar(
             @Parameter(description = "ID interno del paciente", example = "42", required = true)
             @PathVariable Long id,
-            @RequestBody PacienteUpdateRequestDTO request) {
+            @Valid @RequestBody PacienteUpdateRequestDTO request) {
         return ResponseEntity.ok(pacienteService.actualizar(id, request));
+    }
+
+    @Operation(summary = "Habilitar paciente",
+            description = "Reactiva un paciente previamente deshabilitado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paciente habilitado"),
+            @ApiResponse(responseCode = "404", description = "Paciente no encontrado")
+    })
+    @PatchMapping("/{id}/habilitar")
+    public ResponseEntity<PacienteResponseDTO> habilitar(
+            @Parameter(description = "ID interno del paciente", example = "42", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(pacienteService.cambiarEstado(id, true));
+    }
+
+    @Operation(summary = "Deshabilitar paciente",
+            description = "Los pacientes no se eliminan: se deshabilitan para conservar su historial clínico.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paciente deshabilitado"),
+            @ApiResponse(responseCode = "404", description = "Paciente no encontrado")
+    })
+    @PatchMapping("/{id}/deshabilitar")
+    public ResponseEntity<PacienteResponseDTO> deshabilitar(
+            @Parameter(description = "ID interno del paciente", example = "42", required = true)
+            @PathVariable Long id) {
+        return ResponseEntity.ok(pacienteService.cambiarEstado(id, false));
     }
 
     @Operation(summary = "Eliminar antecedente clínico",

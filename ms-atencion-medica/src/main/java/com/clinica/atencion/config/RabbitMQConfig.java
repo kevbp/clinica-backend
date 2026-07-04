@@ -14,6 +14,8 @@ public class RabbitMQConfig {
     // Debe coincidir con el exchange que consume ms-historias-clinicas
     public static final String EXCHANGE_ATENCION        = "atencion.events";
     public static final String ROUTING_KEY_EPISODIO     = "episodio.finalizado";
+    // Consumido exclusivamente por ms-notificaciones — distinto del evento de persistencia del EHR
+    public static final String ROUTING_KEY_EPISODIO_NOTIFICACION = "episodio.atendido.notificacion";
 
     @Bean
     public TopicExchange atencionExchange() {

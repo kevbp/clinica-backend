@@ -11,8 +11,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String EXCHANGE_CAJA                  = "caja.events";
-    public static final String ROUTING_KEY_PAGO_CONFIRMADO    = "pago-consulta.confirmado";
+    public static final String EXCHANGE_CAJA                    = "caja.events";
+    public static final String ROUTING_KEY_PAGO_CONFIRMADO      = "pago-consulta.confirmado";
+    public static final String ROUTING_KEY_REENVIAR_COMPROBANTE = "comprobante.reenviar";
+    public static final String ROUTING_KEY_REENVIAR_NC          = "nota-credito.reenviar";
+    public static final String ROUTING_KEY_RETIRO_SOLICITADO    = "retiro.solicitado";
 
     @Bean
     public TopicExchange cajaExchange() {
