@@ -38,8 +38,10 @@ public class PersonalController {
             @ApiResponse(responseCode = "409", description = "Documento de identidad o keycloakUserId ya registrado")
     })
     @PostMapping
-    public ResponseEntity<PersonalResponseDTO> registrar(@Valid @RequestBody PersonalRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(personalService.registrar(request));
+    public ResponseEntity<PersonalResponseDTO> registrar(
+            @Valid @RequestBody PersonalRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(personalService.registrar(request, authHeader));
     }
 
     @Operation(summary = "Buscar personal por ID de Keycloak",
@@ -57,136 +59,80 @@ public class PersonalController {
         return ResponseEntity.ok(personalService.buscarPorKeycloakUserId(keycloakUserId));
     }
 
-    @Operation(summary = "Listar personal con filtros opcionales",
-            description = "Retorna todo el personal. Acepta filtros opcionales: nombre (búsqueda parcial en nombres+apellidos), tipoPersonal y estadoActivo.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de personal")
-    })
+    @Operation(summary = "Listar personal con filtros opcionales")
     @GetMapping("/todos")
     public ResponseEntity<List<PersonalResponseDTO>> listar(
-            @Parameter(description = "Búsqueda parcial en nombres y apellidos", example = "García")
             @RequestParam(required = false) String nombre,
-            @Parameter(description = "Filtrar por tipo: MEDICO, RECEPCIONISTA, TECNICO_LABORATORIO, ADMINISTRATIVO")
             @RequestParam(required = false) TipoPersonal tipoPersonal,
-            @Parameter(description = "Filtrar por estado activo")
             @RequestParam(required = false) Boolean estadoActivo) {
         return ResponseEntity.ok(personalService.listar(nombre, tipoPersonal, estadoActivo));
     }
 
-    @Operation(summary = "Listar todos los médicos",
-            description = "Retorna todos los médicos con su colegiatura y especialidad. Útil para el selector de agendamiento.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de médicos")
-    })
+    @Operation(summary = "Listar todos los médicos")
     @GetMapping("/medicos")
     public ResponseEntity<List<PersonalMedicoResponseDTO>> listarMedicos() {
         return ResponseEntity.ok(personalService.listarMedicos());
     }
 
-    @Operation(summary = "Consultar perfil de personal",
-            description = "Retorna el perfil completo. Si es MEDICO, incluye medicoInfo con especialidad.")
+    @Operation(summary = "Consultar perfil de personal")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Personal encontrado",
                     content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Personal no encontrado")
     })
     @GetMapping("/{id}")
-    public ResponseEntity<PersonalResponseDTO> obtenerPorId(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
-            @PathVariable Long id) {
+    public ResponseEntity<PersonalResponseDTO> obtenerPorId(@PathVariable Long id) {
         return ResponseEntity.ok(personalService.obtenerPorId(id));
     }
 
-    @Operation(summary = "Verificar habilitación del personal",
-            description = "Verificación ligera del estado activo. Consumido por ms-citas.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Estado de habilitación retornado"),
-            @ApiResponse(responseCode = "404", description = "Personal no encontrado")
-    })
+    @Operation(summary = "Verificar habilitación del personal")
     @GetMapping("/{id}/habilitado")
-    public ResponseEntity<Boolean> verificarHabilitado(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
-            @PathVariable Long id) {
+    public ResponseEntity<Boolean> verificarHabilitado(@PathVariable Long id) {
         return ResponseEntity.ok(personalService.verificarHabilitado(id));
     }
 
-    @Operation(summary = "Consultar extensión médica del personal",
-            description = "Retorna la colegiatura y especialidad. 404 si el personal no tiene extensión médica.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Extensión médica encontrada",
-                    content = @Content(schema = @Schema(implementation = PersonalMedicoResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "El personal no tiene extensión médica registrada")
-    })
+    @Operation(summary = "Consultar extensión médica del personal")
     @GetMapping("/{id}/medico-info")
-    public ResponseEntity<PersonalMedicoResponseDTO> obtenerMedicoInfo(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
-            @PathVariable Long id) {
+    public ResponseEntity<PersonalMedicoResponseDTO> obtenerMedicoInfo(@PathVariable Long id) {
         return ResponseEntity.ok(personalService.obtenerMedico(id));
     }
 
-    @Operation(summary = "Registrar extensión médica",
-            description = "Asocia número de colegiatura y especialidad a un Personal existente de tipo MEDICO.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Extensión médica registrada",
-                    content = @Content(schema = @Schema(implementation = PersonalMedicoResponseDTO.class))),
-            @ApiResponse(responseCode = "400", description = "El personal no es de tipo MEDICO o datos inválidos"),
-            @ApiResponse(responseCode = "404", description = "Personal o especialidad no encontrados"),
-            @ApiResponse(responseCode = "409", description = "El personal ya tiene extensión médica registrada")
-    })
+    @Operation(summary = "Registrar extensión médica")
     @PostMapping("/{id}/medico-info")
     public ResponseEntity<PersonalMedicoResponseDTO> registrarMedicoInfo(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
             @PathVariable Long id,
             @Valid @RequestBody PersonalMedicoRequestDTO request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(personalService.registrarMedico(id, request));
     }
 
-    @Operation(summary = "Actualizar datos del personal",
-            description = "Actualización parcial. Solo se modifican los campos no nulos enviados en el body.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Personal actualizado",
-                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Personal no encontrado"),
-            @ApiResponse(responseCode = "409", description = "Documento de identidad ya registrado en otro personal")
-    })
+    @Operation(summary = "Actualizar datos del personal")
     @PatchMapping("/{id}")
     public ResponseEntity<PersonalResponseDTO> actualizar(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
             @PathVariable Long id,
-            @Valid @RequestBody PersonalUpdateRequestDTO request) {
-        return ResponseEntity.ok(personalService.actualizar(id, request));
+            @Valid @RequestBody PersonalUpdateRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(personalService.actualizar(id, request, authHeader));
     }
 
-    @Operation(summary = "Habilitar personal",
-            description = "Activa el personal para que pueda recibir citas. Idempotente si ya estaba activo.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Personal habilitado",
-                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Personal no encontrado")
-    })
+    @Operation(summary = "Habilitar personal")
     @PatchMapping("/{id}/habilitar")
     public ResponseEntity<PersonalResponseDTO> habilitar(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
-            @PathVariable Long id) {
-        return ResponseEntity.ok(personalService.cambiarEstado(id, true, null));
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(personalService.cambiarEstado(id, true, null, authHeader));
     }
 
-    @Operation(summary = "Deshabilitar personal",
-            description = "Desactiva el personal impidiendo nuevos agendamientos. Idempotente si ya estaba inactivo. "
-                    + "Un usuario no puede deshabilitarse a sí mismo: el frontend envía el keycloakUserId del solicitante.")
+    @Operation(summary = "Deshabilitar personal")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Personal deshabilitado",
-                    content = @Content(schema = @Schema(implementation = PersonalResponseDTO.class))),
+            @ApiResponse(responseCode = "200", description = "Personal deshabilitado"),
             @ApiResponse(responseCode = "400", description = "El solicitante intenta autodeshabilitarse"),
-            @ApiResponse(responseCode = "404", description = "Personal no encontrado"),
             @ApiResponse(responseCode = "409", description = "Es el único administrador activo del sistema")
     })
     @PatchMapping("/{id}/deshabilitar")
     public ResponseEntity<PersonalResponseDTO> deshabilitar(
-            @Parameter(description = "ID interno del personal", example = "5", required = true)
             @PathVariable Long id,
-            @Parameter(description = "keycloakUserId de quien realiza la acción")
-            @RequestParam(required = false) String solicitanteKeycloakUserId) {
-        return ResponseEntity.ok(personalService.cambiarEstado(id, false, solicitanteKeycloakUserId));
+            @RequestParam(required = false) String solicitanteKeycloakUserId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(personalService.cambiarEstado(id, false, solicitanteKeycloakUserId, authHeader));
     }
 }

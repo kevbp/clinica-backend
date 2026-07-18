@@ -1,11 +1,14 @@
 package com.clinica.laboratorio.service;
 
+import com.clinica.laboratorio.client.AuditoriaClient;
 import com.clinica.laboratorio.dto.*;
 import com.clinica.laboratorio.model.Examen;
 import com.clinica.laboratorio.model.ExamenAutorizado;
 import com.clinica.laboratorio.repository.ExamenAutorizadoRepository;
 import com.clinica.laboratorio.repository.ExamenRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,13 +16,18 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExamenService {
 
+    private static final String MODULO = "LABORATORIO";
+
     private final ExamenRepository examenRepository;
     private final ExamenAutorizadoRepository examenAutorizadoRepository;
+    private final AuditoriaClient auditoriaClient;
 
     @Transactional
     public ExamenResponseDTO crear(ExamenRequestDTO request) {
@@ -77,7 +85,34 @@ public class ExamenService {
         autorizado.setExamen(examen);
         autorizado.setFechaAutorizacion(LocalDateTime.now());
 
-        return toAutorizadoResponse(examenAutorizadoRepository.save(autorizado));
+        ExamenAutorizado saved = examenAutorizadoRepository.save(autorizado);
+        auditarAsync("AUTORIZAR_EXAMEN", "ExamenAutorizado", String.valueOf(saved.getId()),
+                "EXITO", null,
+                "{\"idPaciente\":" + request.getIdPaciente() + ",\"idExamen\":" + request.getIdExamen() + "}");
+        return toAutorizadoResponse(saved);
+    }
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento, String metadatos) {
+        String cid = MDC.get("correlationId");
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado(resultado)
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .metadatos(metadatos)
+                                .build(),
+                        null);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
     }
 
     private Examen findById(Long id) {
@@ -92,6 +127,7 @@ public class ExamenService {
         dto.setNombre(e.getNombre());
         dto.setCategoria(e.getCategoria());
         dto.setDescripcion(e.getDescripcion());
+        dto.setPrecio(e.getPrecio());
         return dto;
     }
 

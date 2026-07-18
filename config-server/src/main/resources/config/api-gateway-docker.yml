@@ -1,0 +1,9 @@
+auditoria:
+  url: http://ms-auditoria:8091
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://keycloak-clinica:8080/realms/clinica-interno/protocol/openid-connect/certs

@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @Tag(name = "Atención Médica",
         description = "Estación de trabajo CPOE del médico — flujo SOAP. Borrador transitorio en Redis. Sin precios.")
@@ -36,8 +37,9 @@ public class AtencionMedicaController {
     })
     @PostMapping("/iniciar")
     public ResponseEntity<BorradorResponseDTO> iniciar(
-            @Valid @RequestBody IniciarAtencionRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.iniciar(request));
+            @Valid @RequestBody IniciarAtencionRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.iniciar(request, authHeader));
     }
 
     @Operation(summary = "Autoguardado del borrador",
@@ -95,8 +97,9 @@ public class AtencionMedicaController {
     public ResponseEntity<BorradorResponseDTO> agregarDiagnostico(
             @Parameter(description = "ID de la cita", example = "100", required = true)
             @PathVariable Long idCita,
-            @Valid @RequestBody DiagnosticoRequestDTO request) {
-        return ResponseEntity.ok(service.agregarDiagnostico(idCita, request));
+            @Valid @RequestBody DiagnosticoRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(service.agregarDiagnostico(idCita, request, authHeader));
     }
 
     @Operation(summary = "Agregar línea de receta (P del SOAP)",
@@ -113,8 +116,9 @@ public class AtencionMedicaController {
     public ResponseEntity<AgregarRecetaResponseDTO> agregarReceta(
             @Parameter(description = "ID de la cita", example = "100", required = true)
             @PathVariable Long idCita,
-            @Valid @RequestBody AgregarRecetaRequestDTO request) {
-        return ResponseEntity.ok(service.agregarReceta(idCita, request));
+            @Valid @RequestBody AgregarRecetaRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(service.agregarReceta(idCita, request, authHeader));
     }
 
     @Operation(summary = "Agregar línea de orden de laboratorio (P del SOAP)",
@@ -130,8 +134,9 @@ public class AtencionMedicaController {
     public ResponseEntity<AgregarOrdenResponseDTO> agregarOrden(
             @Parameter(description = "ID de la cita", example = "100", required = true)
             @PathVariable Long idCita,
-            @Valid @RequestBody AgregarOrdenRequestDTO request) {
-        return ResponseEntity.ok(service.agregarOrden(idCita, request));
+            @Valid @RequestBody AgregarOrdenRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(service.agregarOrden(idCita, request, authHeader));
     }
 
     @Operation(summary = "Finalizar atención",
@@ -146,7 +151,8 @@ public class AtencionMedicaController {
     @PostMapping("/{idCita}/finalizar")
     public ResponseEntity<BorradorResponseDTO> finalizar(
             @Parameter(description = "ID de la cita", example = "100", required = true)
-            @PathVariable Long idCita) {
-        return ResponseEntity.ok(service.finalizar(idCita));
+            @PathVariable Long idCita,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(service.finalizar(idCita, authHeader));
     }
 }

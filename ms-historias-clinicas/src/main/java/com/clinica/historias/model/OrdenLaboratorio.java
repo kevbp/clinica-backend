@@ -7,6 +7,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Document(collection = "ordenes_laboratorio")
@@ -26,5 +27,12 @@ public class OrdenLaboratorio {
     private Long idPaciente;
 
     private Long idPersonalMedico;
+
+    private LocalDateTime fechaEmision;
+
+    // Snapshots embebidos para trazabilidad sin referencias débiles
+    private PacienteSnapshot paciente;
+    private MedicoSnapshot   medico;
+
     private List<LineaOrden> lineas;
 }

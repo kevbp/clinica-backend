@@ -1,6 +1,8 @@
 package com.clinica.caja.service;
 
+import com.clinica.caja.client.AuditoriaClient;
 import com.clinica.caja.config.RabbitMQConfig;
+import com.clinica.caja.dto.AccionAuditoriaDTO;
 import com.clinica.caja.dto.EnviarCorreoRequestDTO;
 import com.clinica.caja.dto.NotaCreditoRequestDTO;
 import com.clinica.caja.dto.NotaCreditoResponseDTO;
@@ -15,7 +17,10 @@ import com.clinica.caja.repository.ComprobanteRepository;
 import com.clinica.caja.repository.NotaCreditoRepository;
 import com.clinica.caja.repository.PagoConsultaRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,18 +33,22 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotaCreditoService {
 
+    private static final Logger log = LoggerFactory.getLogger(NotaCreditoService.class);
+
     private static final BigDecimal PORCENTAJE_DEVOLUCION_PARCIAL = new BigDecimal("0.70");
     private static final DateTimeFormatter FMT_FECHA = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    private static final String MODULO = "CAJA";
 
     private final NotaCreditoRepository notaCreditoRepository;
     private final PagoConsultaRepository pagoRepository;
     private final ComprobanteRepository comprobanteRepository;
     private final RabbitTemplate rabbitTemplate;
+    private final AuditoriaClient auditoriaClient;
 
     @Transactional(readOnly = true)
     public List<NotaCreditoResponseDTO> listarPorPaciente(Long idPaciente) {
@@ -60,7 +69,9 @@ public class NotaCreditoService {
                     "Solo se puede emitir una nota de crédito sobre un pago en estado PAGADO.");
         }
 
-        BigDecimal montoTotal = pago.getMonto();
+        BigDecimal creditoAplicado = pago.getMontoCreditoAplicado() != null
+                ? pago.getMontoCreditoAplicado() : BigDecimal.ZERO;
+        BigDecimal montoTotal = pago.getMonto().subtract(creditoAplicado).max(BigDecimal.ZERO);
         boolean conPenalidad = (request.getTipo() == TipoNotaCredito.CANCELACION_TARDIA
                 || request.getTipo() == TipoNotaCredito.NO_SHOW);
 
@@ -102,8 +113,8 @@ public class NotaCreditoService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    @Transactional(readOnly = true)
-    public void enviarPorCorreo(Long idNc, String correo) {
+    @Transactional
+    public void enviarPorCorreo(Long idNc, String correo, String authHeader) {
         NotaCredito nc = notaCreditoRepository.findById(idNc)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "NC no encontrada: " + idNc));
 
@@ -112,8 +123,38 @@ public class NotaCreditoService {
                 nc.getTipo().name(), nc.getMonto(), nc.getMontoRetenido(),
                 nc.getMotivo(), LocalDate.now().atStartOfDay());
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_CAJA, RabbitMQConfig.ROUTING_KEY_REENVIAR_NC, evento);
-        log.info("ReenviarNC publicado: numero={} correo={}", nc.getNumero(), correo);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_CAJA, RabbitMQConfig.ROUTING_KEY_REENVIAR_NC, evento, withCorrelationId());
+        log.info("ReenviarNC publicado: numero={}", nc.getNumero());
+        auditarAsync("MSG_ENCOLADO", "NotaCredito", String.valueOf(idNc),
+                "EXITO", RabbitMQConfig.ROUTING_KEY_REENVIAR_NC, authHeader, null);
+    }
+
+    private MessagePostProcessor withCorrelationId() {
+        String cid = MDC.get("correlationId");
+        return msg -> {
+            if (cid != null) msg.getMessageProperties().setCorrelationId(cid);
+            return msg;
+        };
+    }
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos) {
+        String cid = MDC.get("correlationId");
+        long timestampMs = System.currentTimeMillis();
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO).accion(accion).entidadTipo(entidadTipo)
+                                .entidadId(entidadId).resultado(resultado).correlationId(cid)
+                                .disparaEvento(disparaEvento).metadatos(metadatos)
+                                .timestamp(timestampMs).build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
     }
 
     private NotaCreditoResponseDTO toResponse(NotaCredito nc) {

@@ -1,9 +1,11 @@
 package com.clinica.citas.service;
 
+import com.clinica.citas.client.AuditoriaClient;
 import com.clinica.citas.client.CajaFeignClient;
 import com.clinica.citas.client.HorariosFeignClient;
 import com.clinica.citas.client.PacientesFeignClient;
 import com.clinica.citas.client.PersonalFeignClient;
+import com.clinica.citas.dto.AccionAuditoriaDTO;
 import com.clinica.citas.client.dto.NotaCreditoClientDTO;
 import com.clinica.citas.client.dto.NotaCreditoRequestDTO;
 import com.clinica.citas.client.dto.PacienteDTO;
@@ -19,6 +21,8 @@ import com.clinica.citas.model.EstadoCita;
 import com.clinica.citas.repository.CitaMedicaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,6 +36,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -39,12 +44,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CitaMedicaService {
 
+    private static final String MODULO = "CITAS";
+
     private final CitaMedicaRepository citaRepository;
     private final PersonalFeignClient personalClient;
     private final PacientesFeignClient pacientesClient;
     private final HorariosFeignClient horariosClient;
     private final CajaFeignClient cajaClient;
     private final RabbitTemplate rabbitTemplate;
+    private final AuditoriaClient auditoriaClient;
 
     // ---- Consulta individual ----
 
@@ -113,7 +121,7 @@ public class CitaMedicaService {
     // ---- Crear cita ----
 
     @Transactional
-    public CitaMedicaResponseDTO crear(CitaMedicaRequestDTO request) {
+    public CitaMedicaResponseDTO crear(CitaMedicaRequestDTO request, String authHeader) {
         // Validar médico habilitado
         Boolean habilitado = personalClient.verificarHabilitado(request.getIdPersonal()).getBody();
         if (!Boolean.TRUE.equals(habilitado)) {
@@ -174,6 +182,14 @@ public class CitaMedicaService {
         cita.setFechaHora(request.getFechaHora());
         cita.setEstado(EstadoCita.PENDIENTE_PAGO);
         cita = citaRepository.save(cita);
+        long tGuardado = System.currentTimeMillis();
+
+        // Auditar la creación con el timestamp del momento del save, antes de publicar
+        auditarAsync("AGENDAR_CITA", "CitaMedica", String.valueOf(cita.getId()),
+                "EXITO", "CitaCreada", authHeader,
+                "{\"idPaciente\":" + cita.getIdPaciente() +
+                ",\"idPersonal\":" + cita.getIdPersonal() +
+                ",\"idConsultorio\":" + cita.getIdConsultorio() + "}", tGuardado);
 
         // Publicar evento CitaCreada
         CitaCreadaEvent evento = new CitaCreadaEvent(
@@ -189,9 +205,17 @@ public class CitaMedicaService {
                 medico != null && medico.getMedicoInfo() != null && medico.getMedicoInfo().getEspecialidad() != null
                         ? medico.getMedicoInfo().getEspecialidad().getNombre() : null
         );
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CREADA, evento);
-        log.info("Evento CitaCreada publicado para cita id={}", cita.getId());
+        try {
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CREADA, evento, withCorrelationId());
+            log.info("Evento CitaCreada publicado para cita id={}", cita.getId());
+            auditarAsync("MSG_ENCOLADO", "CitaCreada", String.valueOf(cita.getId()),
+                    "EXITO", RabbitMQConfig.ROUTING_KEY_CREADA, authHeader, null);
+        } catch (Exception ex) {
+            log.error("Error al publicar CitaCreada para cita={}: {}", cita.getId(), ex.getMessage());
+            auditarAsyncError("MSG_ERROR_ENCOLAR", "CitaCreada", String.valueOf(cita.getId()),
+                    RabbitMQConfig.ROUTING_KEY_CREADA, authHeader, ex.getMessage());
+        }
 
         return toResponse(cita);
     }
@@ -208,7 +232,7 @@ public class CitaMedicaService {
     // ---- Cancelación PENDIENTE_PAGO ----
 
     @Transactional
-    public CitaMedicaResponseDTO cancelarPendientePago(Long id) {
+    public CitaMedicaResponseDTO cancelarPendientePago(Long id, String authHeader) {
         CitaMedica cita = findById(id);
         if (cita.getEstado() != EstadoCita.PENDIENTE_PAGO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -216,7 +240,14 @@ public class CitaMedicaService {
         }
         cita.setEstado(EstadoCita.CANCELADA);
         cita = citaRepository.save(cita);
-        publicarCitaCancelada(cita, "Cancelación sin pago previo, sin penalidad.");
+        long tGuardado = System.currentTimeMillis();
+
+        auditarAsync("CANCELAR_CITA_PENDIENTE", "CitaMedica", String.valueOf(cita.getId()),
+                "EXITO", "CitaCancelada", authHeader,
+                "{\"idPaciente\":" + cita.getIdPaciente() + "}", tGuardado);
+
+        publicarCitaCancelada(cita, "Cancelación sin pago previo, sin penalidad.", authHeader);
+
         return toResponse(cita);
     }
 
@@ -228,7 +259,7 @@ public class CitaMedicaService {
      * - <24h de anticipación: nota de crédito por el 70 % del pago; se retiene el 30 % como penalidad (CANCELACION_TARDIA).
      */
     @Transactional
-    public CitaMedicaResponseDTO cancelarConfirmada(Long id) {
+    public CitaMedicaResponseDTO cancelarConfirmada(Long id, String authHeader) {
         CitaMedica cita = findById(id);
         if (cita.getEstado() != EstadoCita.CONFIRMADA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -245,11 +276,17 @@ public class CitaMedicaService {
 
         cita.setEstado(EstadoCita.CANCELADA);
         cita = citaRepository.save(cita);
+        long tGuardado = System.currentTimeMillis();
+
+        auditarAsync("CANCELAR_CITA_CONFIRMADA", "CitaMedica", String.valueOf(cita.getId()),
+                "EXITO", "CitaCancelada", authHeader,
+                "{\"idPaciente\":" + cita.getIdPaciente() + ",\"tipoNc\":\"" + tipoNc + "\"}", tGuardado);
 
         String motuvioEvento = conAnticipacion
                 ? "Cancelación con anticipación ≥ 24h. Se emitió nota de crédito por el 100 % del pago."
                 : "Cancelación con anticipación < 24h. Se emitió nota de crédito por el 70 % del pago (penalidad del 30 % retenida).";
-        publicarCitaCancelada(cita, motuvioEvento, nc);
+        publicarCitaCancelada(cita, motuvioEvento, nc, authHeader);
+
         return toResponse(cita);
     }
 
@@ -261,7 +298,7 @@ public class CitaMedicaService {
      * Solo aplica a citas CONFIRMADAS (que tienen pago).
      */
     @Transactional
-    public CitaMedicaResponseDTO cancelarPorClinica(Long id) {
+    public CitaMedicaResponseDTO cancelarPorClinica(Long id, String authHeader) {
         CitaMedica cita = findById(id);
         if (cita.getEstado() != EstadoCita.CONFIRMADA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -275,16 +312,23 @@ public class CitaMedicaService {
 
         cita.setEstado(EstadoCita.CANCELADA);
         cita = citaRepository.save(cita);
+        long tGuardado = System.currentTimeMillis();
+
+        auditarAsync("CANCELAR_CITA_POR_CLINICA", "CitaMedica", String.valueOf(cita.getId()),
+                "EXITO", "CitaCancelada", authHeader,
+                "{\"idPaciente\":" + cita.getIdPaciente() + "}", tGuardado);
+
         publicarCitaCancelada(cita,
                 "La clínica ha cancelado la cita por causas de fuerza mayor. Se emitió nota de crédito por el 100 % del pago.",
-                ncClinica);
+                ncClinica, authHeader);
+
         return toResponse(cita);
     }
 
     // ---- Reagendamiento (CONFIRMADA con ≥24h, o PENDIENTE_PAGO sin restricción de anticipación) ----
 
     @Transactional
-    public CitaMedicaResponseDTO reagendar(Long id, ReagendarRequestDTO request) {
+    public CitaMedicaResponseDTO reagendar(Long id, ReagendarRequestDTO request, String authHeader) {
         CitaMedica cita = findById(id);
 
         if (cita.getEstado() == EstadoCita.CONFIRMADA) {
@@ -336,6 +380,12 @@ public class CitaMedicaService {
 
         cita.setFechaHora(request.getNuevaFechaHora());
         cita = citaRepository.save(cita);
+        long tGuardado = System.currentTimeMillis();
+
+        auditarAsync("REAGENDAR_CITA", "CitaMedica", String.valueOf(cita.getId()),
+                "EXITO", "CitaReagendada", authHeader,
+                "{\"idPaciente\":" + cita.getIdPaciente() + ",\"idPersonal\":" + cita.getIdPersonal() + "}",
+                tGuardado);
 
         // Notificar al paciente del reagendamiento
         PacienteDTO paciente = pacientesClient.obtenerPaciente(cita.getIdPaciente()).getBody();
@@ -352,9 +402,17 @@ public class CitaMedicaService {
                 medico != null && medico.getMedicoInfo() != null && medico.getMedicoInfo().getEspecialidad() != null
                         ? medico.getMedicoInfo().getEspecialidad().getNombre() : null
         );
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_REAGENDADA, evento);
-        log.info("Evento CitaReagendada publicado para cita id={}", cita.getId());
+        try {
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_REAGENDADA, evento, withCorrelationId());
+            log.info("Evento CitaReagendada publicado para cita id={}", cita.getId());
+            auditarAsync("MSG_ENCOLADO", "CitaReagendada", String.valueOf(cita.getId()),
+                    "EXITO", RabbitMQConfig.ROUTING_KEY_REAGENDADA, authHeader, null);
+        } catch (Exception ex) {
+            log.error("Error al publicar CitaReagendada para cita={}: {}", cita.getId(), ex.getMessage());
+            auditarAsyncError("MSG_ERROR_ENCOLAR", "CitaReagendada", String.valueOf(cita.getId()),
+                    RabbitMQConfig.ROUTING_KEY_REAGENDADA, authHeader, ex.getMessage());
+        }
 
         return toResponse(cita);
     }
@@ -371,15 +429,74 @@ public class CitaMedicaService {
         return toResponse(citaRepository.save(cita));
     }
 
+    // ---- Auditoría ----
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos) {
+        auditarAsync(accion, entidadTipo, entidadId, resultado, disparaEvento, authHeader, metadatos,
+                     System.currentTimeMillis());
+    }
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos, long timestampMs) {
+        String cid = MDC.get("correlationId");
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado(resultado)
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .metadatos(metadatos)
+                                .timestamp(timestampMs)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
+    private void auditarAsyncError(String accion, String entidadTipo, String entidadId,
+                                   String disparaEvento, String authHeader, String errorDetalle) {
+        String cid = MDC.get("correlationId");
+        long ts = System.currentTimeMillis();
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado("ERROR")
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .errorDetalle(errorDetalle)
+                                .timestamp(ts)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
     // ---- Helpers ----
 
     // Publica CitaCancelada para que ms-notificaciones avise al paciente. No se publica desde
     // compensarPagoFallido: es una cancelación técnica de saga, no una decisión del paciente.
-    private void publicarCitaCancelada(CitaMedica cita, String motivo) {
-        publicarCitaCancelada(cita, motivo, null);
+    private void publicarCitaCancelada(CitaMedica cita, String motivo, String authHeader) {
+        publicarCitaCancelada(cita, motivo, null, authHeader);
     }
 
-    private void publicarCitaCancelada(CitaMedica cita, String motivo, NotaCreditoClientDTO nc) {
+    private void publicarCitaCancelada(CitaMedica cita, String motivo, NotaCreditoClientDTO nc, String authHeader) {
         PacienteDTO paciente = pacientesClient.obtenerPaciente(cita.getIdPaciente()).getBody();
         PersonalDTO medico = personalClient.obtenerPersonal(cita.getIdPersonal()).getBody();
 
@@ -399,9 +516,25 @@ public class CitaMedicaService {
                 nc != null ? nc.getMontoRetenido() : null,
                 nc != null ? nc.getTipo() : null
         );
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CANCELADA, evento);
-        log.info("Evento CitaCancelada publicado para cita id={}", cita.getId());
+        try {
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.EXCHANGE_CITAS, RabbitMQConfig.ROUTING_KEY_CANCELADA, evento, withCorrelationId());
+            log.info("Evento CitaCancelada publicado para cita id={}", cita.getId());
+            auditarAsync("MSG_ENCOLADO", "CitaCancelada", String.valueOf(cita.getId()),
+                    "EXITO", RabbitMQConfig.ROUTING_KEY_CANCELADA, authHeader, null);
+        } catch (Exception ex) {
+            log.error("Error al publicar CitaCancelada para cita={}: {}", cita.getId(), ex.getMessage());
+            auditarAsyncError("MSG_ERROR_ENCOLAR", "CitaCancelada", String.valueOf(cita.getId()),
+                    RabbitMQConfig.ROUTING_KEY_CANCELADA, authHeader, ex.getMessage());
+        }
+    }
+
+    private MessagePostProcessor withCorrelationId() {
+        String cid = MDC.get("correlationId");
+        return msg -> {
+            if (cid != null) msg.getMessageProperties().setCorrelationId(cid);
+            return msg;
+        };
     }
 
     private CitaMedica findById(Long id) {
@@ -428,7 +561,7 @@ public class CitaMedicaService {
             }
             publicarCitaCancelada(cita,
                     "Auto-cancelación por no presentación (más de 15 minutos de retraso). Se emitió nota de crédito por el 70 % del pago (penalidad del 30 % retenida).",
-                    ncNoShow);
+                    ncNoShow, null);
         }
         return cita;
     }

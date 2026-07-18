@@ -3,8 +3,9 @@ package com.clinica.caja.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import java.math.BigDecimal;
 import lombok.Setter;
+
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "pagos_consulta")
@@ -37,7 +38,6 @@ public class PagoConsulta {
     @Column(name = "especialidad")
     private String especialidad;
 
-    /** Credito de NC aplicado. NULL = sin credito (filas previas). */
     @Column(name = "monto_credito_aplicado", precision = 10, scale = 2)
     private BigDecimal montoCreditoAplicado;
 }

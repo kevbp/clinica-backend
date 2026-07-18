@@ -55,8 +55,9 @@ public class ComprobanteController {
     public ResponseEntity<Void> enviarPorCorreo(
             @Parameter(description = "ID del comprobante", example = "7", required = true)
             @PathVariable Long id,
-            @RequestBody @Valid EnviarCorreoRequestDTO request) {
-        comprobanteService.enviarPorCorreo(id, request.getCorreo());
+            @RequestBody @Valid EnviarCorreoRequestDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+        comprobanteService.enviarPorCorreo(id, request.getCorreo(), authHeader);
         return ResponseEntity.ok().build();
     }
 }

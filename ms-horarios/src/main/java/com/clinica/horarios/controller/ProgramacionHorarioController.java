@@ -1,5 +1,7 @@
 package com.clinica.horarios.controller;
 
+import com.clinica.horarios.dto.ProgramacionHorarioBatchRequestDTO;
+import com.clinica.horarios.dto.ProgramacionHorarioBatchResponseDTO;
 import com.clinica.horarios.dto.ProgramacionHorarioRequestDTO;
 import com.clinica.horarios.dto.ProgramacionHorarioResponseDTO;
 import com.clinica.horarios.dto.ProgramacionHorarioUpdateRequestDTO;
@@ -31,25 +33,40 @@ public class ProgramacionHorarioController {
     private final ProgramacionHorarioService programacionHorarioService;
 
     @Operation(summary = "Crear turno",
-            description = "Registra una franja horaria para un médico en un consultorio, en una fecha concreta. " +
-                          "Valida que el consultorio no esté asignado a otro personal en esa fecha y franja, " +
-                          "y que la fecha no sea anterior a hoy.")
+            description = "Registra una franja horaria para un médico en un consultorio en una fecha concreta.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Turno creado",
                     content = @Content(schema = @Schema(implementation = ProgramacionHorarioResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos, rango horario incorrecto o fecha pasada"),
             @ApiResponse(responseCode = "404", description = "Consultorio no encontrado"),
-            @ApiResponse(responseCode = "409", description = "Conflicto: el consultorio ya está ocupado en esa fecha y franja por otro personal")
+            @ApiResponse(responseCode = "409", description = "Conflicto: el consultorio ya está ocupado en esa franja")
     })
     @PostMapping
     public ResponseEntity<ProgramacionHorarioResponseDTO> crear(
-            @Valid @RequestBody ProgramacionHorarioRequestDTO request) {
+            @Valid @RequestBody ProgramacionHorarioRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(programacionHorarioService.crear(request));
+                .body(programacionHorarioService.crear(request, authHeader));
     }
 
-    @Operation(summary = "Consultar turno por ID",
-            description = "Retorna el detalle de un turno de programación horaria específico")
+    @Operation(summary = "Crear turnos en lote",
+            description = "Crea turnos para múltiples fechas en una sola transacción. Si alguna fecha tiene conflicto, ningún turno se crea.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Todos los turnos creados",
+                    content = @Content(schema = @Schema(implementation = ProgramacionHorarioBatchResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Rango horario incorrecto o alguna fecha es pasada"),
+            @ApiResponse(responseCode = "404", description = "Consultorio no encontrado"),
+            @ApiResponse(responseCode = "409", description = "Conflicto en alguna de las fechas — ningún turno fue creado")
+    })
+    @PostMapping("/batch")
+    public ResponseEntity<ProgramacionHorarioBatchResponseDTO> crearBatch(
+            @Valid @RequestBody ProgramacionHorarioBatchRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(programacionHorarioService.crearBatch(request, authHeader));
+    }
+
+    @Operation(summary = "Consultar turno por ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Turno encontrado",
                     content = @Content(schema = @Schema(implementation = ProgramacionHorarioResponseDTO.class))),
@@ -63,25 +80,25 @@ public class ProgramacionHorarioController {
     }
 
     @Operation(summary = "Actualizar turno",
-            description = "Actualización parcial. Solo se modifican los campos presentes en el body (no nulos). " +
-                          "No se puede modificar un turno cuya fecha actual o nueva sea anterior a hoy.")
+            description = "No se puede modificar un turno cuya fecha ya pasó.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Turno actualizado",
                     content = @Content(schema = @Schema(implementation = ProgramacionHorarioResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Rango horario incorrecto o fecha pasada"),
             @ApiResponse(responseCode = "404", description = "Turno o consultorio no encontrado"),
-            @ApiResponse(responseCode = "409", description = "Conflicto de horario, o el turno ya pasó")
+            @ApiResponse(responseCode = "409", description = "Conflicto de horario o turno ya pasó")
     })
     @PatchMapping("/{id}")
     public ResponseEntity<ProgramacionHorarioResponseDTO> actualizar(
             @Parameter(description = "ID del turno", example = "1", required = true)
             @PathVariable Long id,
-            @RequestBody ProgramacionHorarioUpdateRequestDTO request) {
-        return ResponseEntity.ok(programacionHorarioService.actualizar(id, request));
+            @RequestBody ProgramacionHorarioUpdateRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(programacionHorarioService.actualizar(id, request, authHeader));
     }
 
     @Operation(summary = "Eliminar turno",
-            description = "Elimina un turno. No se permite eliminar turnos cuya fecha ya pasó.")
+            description = "No se permite eliminar turnos cuya fecha ya pasó.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Turno eliminado"),
             @ApiResponse(responseCode = "404", description = "Turno no encontrado"),
@@ -90,35 +107,24 @@ public class ProgramacionHorarioController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(
             @Parameter(description = "ID del turno", example = "1", required = true)
-            @PathVariable Long id) {
-        programacionHorarioService.eliminar(id);
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        programacionHorarioService.eliminar(id, authHeader);
         return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Obtener turnos de un médico",
-            description = "Lista los turnos de un médico. Si se envían desde/hasta, filtra por ese rango de fechas " +
-                          "(usado por la vista de calendario mensual); si no, retorna todo su historial. " +
-                          "Consumido por ms-citas para calcular disponibilidad.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de turnos del médico")
-    })
+            description = "Consumido por ms-citas para calcular disponibilidad.")
     @GetMapping("/personal/{idPersonal}")
     public ResponseEntity<List<ProgramacionHorarioResponseDTO>> obtenerPorPersonal(
             @Parameter(description = "ID del personal en ms-personal", example = "5", required = true)
             @PathVariable Long idPersonal,
-            @Parameter(description = "Fecha de inicio del rango (inclusive)", example = "2026-07-01")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @Parameter(description = "Fecha de fin del rango (inclusive)", example = "2026-07-31")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
         return ResponseEntity.ok(programacionHorarioService.obtenerPorPersonal(idPersonal, desde, hasta));
     }
 
-    @Operation(summary = "Obtener turnos de un consultorio",
-            description = "Lista todos los turnos asignados a un consultorio físico, de cualquier médico.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de turnos del consultorio"),
-            @ApiResponse(responseCode = "404", description = "Consultorio no encontrado")
-    })
+    @Operation(summary = "Obtener turnos de un consultorio")
     @GetMapping("/consultorio/{idConsultorio}")
     public ResponseEntity<List<ProgramacionHorarioResponseDTO>> obtenerPorConsultorio(
             @Parameter(description = "ID del consultorio físico", example = "1", required = true)
@@ -126,11 +132,7 @@ public class ProgramacionHorarioController {
         return ResponseEntity.ok(programacionHorarioService.obtenerPorConsultorio(idConsultorio));
     }
 
-    @Operation(summary = "Listar todos los turnos",
-            description = "Retorna la programación horaria completa de todos los médicos y consultorios.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista completa de turnos")
-    })
+    @Operation(summary = "Listar todos los turnos")
     @GetMapping
     public ResponseEntity<List<ProgramacionHorarioResponseDTO>> listar() {
         return ResponseEntity.ok(programacionHorarioService.listar());

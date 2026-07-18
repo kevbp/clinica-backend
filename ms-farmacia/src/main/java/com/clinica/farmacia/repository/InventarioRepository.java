@@ -10,6 +10,19 @@ import java.util.List;
 
 public interface InventarioRepository extends JpaRepository<Inventario, Long> {
 
+    // Lotes próximos a vencer con stock > 0.
+    @Query("""
+            SELECT i FROM Inventario i
+            JOIN i.lote l
+            WHERE l.fechaVencimiento >= :hoy
+              AND l.fechaVencimiento <= :limite
+              AND i.cantidadDisponible > 0
+            ORDER BY l.fechaVencimiento ASC
+            """)
+    List<Inventario> findLotesProximosAVencer(
+            @Param("hoy") LocalDate hoy,
+            @Param("limite") LocalDate limite);
+
     // Lotes vigentes con stock, ordenados por fechaVencimiento ASC (FEFO).
     @Query("""
             SELECT i FROM Inventario i
@@ -25,6 +38,8 @@ public interface InventarioRepository extends JpaRepository<Inventario, Long> {
 
     @Query("SELECT i FROM Inventario i JOIN i.lote l WHERE l.medicamento.id = :idMedicamento")
     List<Inventario> findByMedicamentoId(@Param("idMedicamento") Long idMedicamento);
+
+    java.util.Optional<Inventario> findByLoteId(Long loteId);
 
     // Stock total vigente (lotes no vencidos), incluye lotes con cantidad = 0 en la suma.
     @Query("""

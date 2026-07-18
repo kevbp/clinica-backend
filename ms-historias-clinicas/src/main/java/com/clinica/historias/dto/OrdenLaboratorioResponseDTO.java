@@ -1,8 +1,11 @@
 package com.clinica.historias.dto;
 
+import com.clinica.historias.model.MedicoSnapshot;
+import com.clinica.historias.model.PacienteSnapshot;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
@@ -20,6 +23,15 @@ public class OrdenLaboratorioResponseDTO {
 
     @Schema(description = "ID del médico que emitió la orden", example = "5")
     private Long idPersonalMedico;
+
+    @Schema(description = "Fecha y hora de emisión (momento de la atención)")
+    private LocalDateTime fechaEmision;
+
+    @Schema(description = "Snapshot del paciente embebido al momento de la atención")
+    private PacienteSnapshot paciente;
+
+    @Schema(description = "Snapshot del médico solicitante embebido al momento de la atención")
+    private MedicoSnapshot medico;
 
     @Schema(description = "Líneas de exámenes ordenados")
     private List<LineaOrdenResponseDTO> lineas;

@@ -20,29 +20,32 @@ import java.time.format.DateTimeFormatter;
 @RequiredArgsConstructor
 public class NotificacionService {
 
-    private static final String NOMBRE_CENTRO = "Centro Médico Esperanza Sur";
-    private static final String SEDE = "Sede Lima Sur";
+    private static final String NOMBRE_CENTRO     = "Centro Médico Esperanza Sur";
+    private static final String SEDE              = "Sede Lima Sur";
     private static final String TELEFONO_CONTACTO = "(01) 226 3817";
     private static final DateTimeFormatter FORMATO_FECHA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-    private static final DateTimeFormatter FORMATO_HORA = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter FORMATO_HORA  = DateTimeFormatter.ofPattern("HH:mm");
+
+    // Valores de retorno que los listeners usan para decidir el evento de auditoría
+    public static final String ENVIADO = "ENVIADO";
+    public static final String OMITIDO = "OMITIDO";
+    public static final String FALLIDO = "FALLIDO";
 
     private final ConfiguracionSmtpService configuracionSmtpService;
 
-    public void notificarCitaCreada(CitaCreadaEvent evento) {
+    /** @return ENVIADO | OMITIDO (desactivado o sin correo) | FALLIDO (error SMTP o config) */
+    public String notificarCitaCreada(CitaCreadaEvent evento) {
         if (!evento.isNotificar()) {
-            log.info("CitaCreada id={}: notificación desactivada por el usuario, se omite el envío", evento.getIdCita());
-            return;
+            log.info("CitaCreada id={}: notificación desactivada, se omite el envío", evento.getIdCita());
+            return OMITIDO;
         }
         if (evento.getCorreoPaciente() == null || evento.getCorreoPaciente().isBlank()) {
             log.warn("CitaCreada id={}: sin correo del paciente, notificación omitida", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
-
         String nombrePaciente = evento.getNombrePaciente() != null ? evento.getNombrePaciente() : "paciente";
-        String especialidad = evento.getEspecialidad() != null ? evento.getEspecialidad() : "Por confirmar";
-        String nombreMedico = evento.getNombreMedico() != null ? evento.getNombreMedico() : "Por confirmar";
-
-        String asunto = "Su cita médica fue agendada";
+        String especialidad   = evento.getEspecialidad()   != null ? evento.getEspecialidad()   : "Por confirmar";
+        String nombreMedico   = evento.getNombreMedico()   != null ? evento.getNombreMedico()   : "Por confirmar";
         String cuerpo = String.format(
                 "Estimado/a %s,%n%n" +
                 "Hemos registrado tu cita en el %s.%n%n" +
@@ -58,26 +61,22 @@ public class NotificacionService {
                 nombrePaciente, NOMBRE_CENTRO, evento.getIdCita(), especialidad, nombreMedico,
                 evento.getFechaHora().format(FORMATO_FECHA), evento.getFechaHora().format(FORMATO_HORA),
                 SEDE, TELEFONO_CONTACTO, NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoPaciente(), asunto, cuerpo);
-        log.info("Notificación CitaCreada enviada a {} (cita={})", evento.getCorreoPaciente(), evento.getIdCita());
+        return enviar(evento.getCorreoPaciente(), "Su cita médica fue agendada", cuerpo);
     }
 
-    public void notificarCitaCancelada(CitaCanceladaEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarCitaCancelada(CitaCanceladaEvent evento) {
         if (!evento.isNotificar()) {
             log.info("CitaCancelada id={}: notificación desactivada, se omite el envío", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
         if (evento.getCorreoPaciente() == null || evento.getCorreoPaciente().isBlank()) {
             log.warn("CitaCancelada id={}: sin correo del paciente, notificación omitida", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
-
         String nombrePaciente = evento.getNombrePaciente() != null ? evento.getNombrePaciente() : "paciente";
-        String especialidad = evento.getEspecialidad() != null ? evento.getEspecialidad() : "Por confirmar";
-        String nombreMedico = evento.getNombreMedico() != null ? evento.getNombreMedico() : "Por confirmar";
-
-        String asunto = "Su cita médica fue cancelada";
+        String especialidad   = evento.getEspecialidad()   != null ? evento.getEspecialidad()   : "Por confirmar";
+        String nombreMedico   = evento.getNombreMedico()   != null ? evento.getNombreMedico()   : "Por confirmar";
         String cuerpo = String.format(
                 "Estimado/a %s,%n%n" +
                 "Le informamos que su cita en el %s ha sido cancelada.%n%n" +
@@ -91,8 +90,6 @@ public class NotificacionService {
                 nombrePaciente, NOMBRE_CENTRO, evento.getIdCita(), especialidad, nombreMedico,
                 evento.getFechaHora().format(FORMATO_FECHA), evento.getFechaHora().format(FORMATO_HORA),
                 evento.getMotivo(), TELEFONO_CONTACTO, NOMBRE_CENTRO);
-
-        // Adjuntar info de NC si fue emitida al cancelar
         if (evento.getNumeroNc() != null) {
             StringBuilder sbNc = new StringBuilder(cuerpo);
             sbNc.append(String.format("%n%n--- NOTA DE CRÉDITO EMITIDA ---%n"));
@@ -104,26 +101,22 @@ public class NotificacionService {
             sbNc.append(String.format("%nAcérquese a nuestras ventanillas o contáctenos para gestionar su devolución."));
             cuerpo = sbNc.toString();
         }
-
-        enviar(evento.getCorreoPaciente(), asunto, cuerpo);
-        log.info("Notificación CitaCancelada enviada a {} (cita={})", evento.getCorreoPaciente(), evento.getIdCita());
+        return enviar(evento.getCorreoPaciente(), "Su cita médica fue cancelada", cuerpo);
     }
 
-    public void notificarCitaReagendada(CitaReagendadaEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarCitaReagendada(CitaReagendadaEvent evento) {
         if (!evento.isNotificar()) {
             log.info("CitaReagendada id={}: notificación desactivada, se omite el envío", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
         if (evento.getCorreoPaciente() == null || evento.getCorreoPaciente().isBlank()) {
             log.warn("CitaReagendada id={}: sin correo del paciente, notificación omitida", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
-
         String nombrePaciente = evento.getNombrePaciente() != null ? evento.getNombrePaciente() : "paciente";
-        String especialidad = evento.getEspecialidad() != null ? evento.getEspecialidad() : "Por confirmar";
-        String nombreMedico = evento.getNombreMedico() != null ? evento.getNombreMedico() : "Por confirmar";
-
-        String asunto = "Su cita médica fue reprogramada";
+        String especialidad   = evento.getEspecialidad()   != null ? evento.getEspecialidad()   : "Por confirmar";
+        String nombreMedico   = evento.getNombreMedico()   != null ? evento.getNombreMedico()   : "Por confirmar";
         String cuerpo = String.format(
                 "Estimado/a %s,%n%n" +
                 "Le informamos que su cita en el %s ha sido reprogramada.%n%n" +
@@ -137,21 +130,18 @@ public class NotificacionService {
                 nombrePaciente, NOMBRE_CENTRO, evento.getIdCita(), especialidad, nombreMedico,
                 evento.getNuevaFechaHora().format(FORMATO_FECHA), evento.getNuevaFechaHora().format(FORMATO_HORA),
                 SEDE, TELEFONO_CONTACTO, NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoPaciente(), asunto, cuerpo);
-        log.info("Notificación CitaReagendada enviada a {} (cita={})", evento.getCorreoPaciente(), evento.getIdCita());
+        return enviar(evento.getCorreoPaciente(), "Su cita médica fue reprogramada", cuerpo);
     }
 
-    public void notificarPagoConfirmado(PagoConsultaConfirmadoEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarPagoConfirmado(PagoConsultaConfirmadoEvent evento) {
         if (evento.getCorreoPaciente() == null || evento.getCorreoPaciente().isBlank()) {
             log.warn("PagoConsultaConfirmado cita={}: sin correo del paciente, notificación omitida", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
-
         String nombrePaciente = evento.getNombrePaciente() != null ? evento.getNombrePaciente() : "paciente";
-        String numeroBoleta = evento.getNumeroBoleta() != null ? evento.getNumeroBoleta() : "-";
-        String especialidad = evento.getEspecialidad() != null ? (" — " + evento.getEspecialidad()) : "";
-
+        String numeroBoleta   = evento.getNumeroBoleta()   != null ? evento.getNumeroBoleta()   : "-";
+        String especialidad   = evento.getEspecialidad()   != null ? (" — " + evento.getEspecialidad()) : "";
         StringBuilder sb = new StringBuilder();
         sb.append(String.format("Estimado/a %s,%n%n", nombrePaciente));
         sb.append(String.format("Su pago ha sido confirmado exitosamente. A continuación el detalle de su boleta:%n%n"));
@@ -165,49 +155,42 @@ public class NotificacionService {
             String conceptoDesc = evento.getConceptoDescuento() != null ? evento.getConceptoDescuento() : "Descuento";
             sb.append(String.format("Descuento (%s): -S/ %.2f%n", conceptoDesc, evento.getDescuento()));
         }
-        if (evento.getSubtotal() != null) sb.append(String.format("Subtotal (sin IGV): S/ %.2f%n", evento.getSubtotal()));
-        if (evento.getIgv() != null) sb.append(String.format("IGV (18%%): S/ %.2f%n", evento.getIgv()));
-        if (evento.getMontoTotal() != null) sb.append(String.format("TOTAL PAGADO: S/ %.2f%n", evento.getMontoTotal()));
+        if (evento.getSubtotal()    != null) sb.append(String.format("Subtotal (sin IGV): S/ %.2f%n", evento.getSubtotal()));
+        if (evento.getIgv()         != null) sb.append(String.format("IGV (18%%): S/ %.2f%n", evento.getIgv()));
+        if (evento.getMontoTotal()  != null) sb.append(String.format("TOTAL PAGADO: S/ %.2f%n", evento.getMontoTotal()));
         sb.append(String.format("%nPuede acercarse a su cita en el horario agendado.%n%n%s", NOMBRE_CENTRO));
-
-        enviar(evento.getCorreoPaciente(), "Pago confirmado — " + numeroBoleta, sb.toString());
-        log.info("Notificación PagoConfirmado enviada a {} (cita={})", evento.getCorreoPaciente(), evento.getIdCita());
+        return enviar(evento.getCorreoPaciente(), "Pago confirmado — " + numeroBoleta, sb.toString());
     }
 
-    public void notificarEpisodioAtendido(EpisodioAtendidoEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarEpisodioAtendido(EpisodioAtendidoEvent evento) {
         if (!evento.isNotificar()) {
             log.info("EpisodioAtendido cita={}: notificación desactivada, se omite el envío", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
         if (evento.getCorreoPaciente() == null || evento.getCorreoPaciente().isBlank()) {
             log.warn("EpisodioAtendido cita={}: sin correo del paciente, notificación omitida", evento.getIdCita());
-            return;
+            return OMITIDO;
         }
-
         String nombrePaciente = evento.getNombrePaciente() != null ? evento.getNombrePaciente() : "paciente";
         String fechaHora = evento.getFechaHoraAtencion() != null
                 ? evento.getFechaHoraAtencion().format(FORMATO_FECHA) + " - " + evento.getFechaHoraAtencion().format(FORMATO_HORA)
                 : "su cita reciente";
-
-        String asunto = "Gracias por su visita";
         String cuerpo = String.format(
                 "Estimado/a %s,%n%n" +
                 "Le confirmamos que su atención del %s ha finalizado.%n%n" +
                 "Gracias por confiar en %s.%n%n" +
                 "%s",
                 nombrePaciente, fechaHora, NOMBRE_CENTRO, NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoPaciente(), asunto, cuerpo);
-        log.info("Notificación EpisodioAtendido enviada a {} (cita={})", evento.getCorreoPaciente(), evento.getIdCita());
+        return enviar(evento.getCorreoPaciente(), "Gracias por su visita", cuerpo);
     }
 
-    public void notificarReenvioComprobante(ReenviarComprobanteEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarReenvioComprobante(ReenviarComprobanteEvent evento) {
         if (evento.getCorreoDestino() == null || evento.getCorreoDestino().isBlank()) {
             log.warn("ReenviarComprobante {}: sin correo destino, omitido", evento.getNumero());
-            return;
+            return OMITIDO;
         }
-
-        String asunto = "Su comprobante de pago — " + evento.getNumero();
         String cuerpo = String.format(
                 "Estimado/a cliente,%n%n" +
                 "A continuación el detalle de su comprobante de pago:%n%n" +
@@ -221,23 +204,17 @@ public class NotificacionService {
                 "%s",
                 evento.getNumero(),
                 evento.getFechaEmision().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
-                evento.getSubtotal(),
-                evento.getIgv(),
-                evento.getMontoTotal(),
-                NOMBRE_CENTRO,
-                NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoDestino(), asunto, cuerpo);
-        log.info("Comprobante {} reenviado a {}", evento.getNumero(), evento.getCorreoDestino());
+                evento.getSubtotal(), evento.getIgv(), evento.getMontoTotal(),
+                NOMBRE_CENTRO, NOMBRE_CENTRO);
+        return enviar(evento.getCorreoDestino(), "Su comprobante de pago — " + evento.getNumero(), cuerpo);
     }
 
-    public void notificarReenvioNotaCredito(ReenviarNotaCreditoEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarReenvioNotaCredito(ReenviarNotaCreditoEvent evento) {
         if (evento.getCorreoDestino() == null || evento.getCorreoDestino().isBlank()) {
             log.warn("ReenviarNC {}: sin correo destino, omitido", evento.getNumero());
-            return;
+            return OMITIDO;
         }
-
-        String asunto = "Su nota de crédito — " + evento.getNumero();
         String cuerpo = String.format(
                 "Estimado/a cliente,%n%n" +
                 "A continuación el detalle de su nota de crédito:%n%n" +
@@ -253,22 +230,17 @@ public class NotificacionService {
                 "Gracias por confiar en el %s.%n%n%s",
                 evento.getNumero(),
                 evento.getFechaEmision().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
-                evento.getTipo(),
-                evento.getMotivo(),
-                evento.getMonto(),
+                evento.getTipo(), evento.getMotivo(), evento.getMonto(),
                 NOMBRE_CENTRO, NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoDestino(), asunto, cuerpo);
-        log.info("NC {} enviada a {}", evento.getNumero(), evento.getCorreoDestino());
+        return enviar(evento.getCorreoDestino(), "Su nota de crédito — " + evento.getNumero(), cuerpo);
     }
 
-    public void notificarRetiroSolicitado(RetiroSolicitadoEvent evento) {
+    /** @return ENVIADO | OMITIDO | FALLIDO */
+    public String notificarRetiroSolicitado(RetiroSolicitadoEvent evento) {
         if (evento.getCorreoDestino() == null || evento.getCorreoDestino().isBlank()) {
             log.warn("RetiroSolicitado id={}: sin correo destino, omitido", evento.getIdRetiro());
-            return;
+            return OMITIDO;
         }
-
-        String asunto = "Solicitud de retiro bancario registrada";
         String cuerpo = String.format(
                 "Estimado/a %s,%n%n" +
                 "Hemos recibido su solicitud de retiro bancario.%n%n" +
@@ -279,19 +251,14 @@ public class NotificacionService {
                 "El equipo de caja procesará la transferencia en un plazo de 3 a 5 días hábiles.%n%n" +
                 "Si tiene consultas, comuníquese con nosotros al %s.%n%n" +
                 "%s",
-                evento.getNombreTitular(),
-                evento.getMonto(),
-                evento.getNombreBanco(),
+                evento.getNombreTitular(), evento.getMonto(), evento.getNombreBanco(),
                 evento.getNumeroCuenta(),
                 evento.getFechaSolicitud().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")),
                 TELEFONO_CONTACTO, NOMBRE_CENTRO);
-
-        enviar(evento.getCorreoDestino(), asunto, cuerpo);
-        log.info("Retiro {} notificado a {}", evento.getIdRetiro(), evento.getCorreoDestino());
+        return enviar(evento.getCorreoDestino(), "Solicitud de retiro bancario registrada", cuerpo);
     }
 
-    // Envío de correo de prueba desde la pantalla de Configuración — a diferencia de enviar(),
-    // sí relanza la excepción para que el frontend muestre el motivo exacto del fallo.
+    // Correo de prueba — sí relanza la excepción para que el frontend muestre el error exacto
     public void enviarPrueba(String destinatario) {
         SimpleMailMessage mensaje = new SimpleMailMessage();
         mensaje.setFrom(configuracionSmtpService.obtenerRemitente());
@@ -301,7 +268,12 @@ public class NotificacionService {
         configuracionSmtpService.construirMailSender().send(mensaje);
     }
 
-    private void enviar(String destinatario, String asunto, String cuerpo) {
+    /**
+     * Intenta enviar el email. Captura cualquier excepción (fallo SMTP, sin config, red, auth)
+     * y la trata como FALLIDO sin propagar — un error de correo no debe interrumpir el procesamiento.
+     * @return ENVIADO si el envío fue exitoso, FALLIDO en caso contrario
+     */
+    private String enviar(String destinatario, String asunto, String cuerpo) {
         try {
             SimpleMailMessage mensaje = new SimpleMailMessage();
             mensaje.setFrom(configuracionSmtpService.obtenerRemitente());
@@ -309,9 +281,10 @@ public class NotificacionService {
             mensaje.setSubject(asunto);
             mensaje.setText(cuerpo);
             configuracionSmtpService.construirMailSender().send(mensaje);
+            return ENVIADO;
         } catch (Exception ex) {
             log.error("Error al enviar correo a {}: {}", destinatario, ex.getMessage());
-            // No se relanza: un fallo de envío no debe afectar el resto del sistema
+            return FALLIDO;
         }
     }
 }

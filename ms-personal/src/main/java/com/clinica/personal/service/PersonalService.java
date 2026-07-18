@@ -1,5 +1,6 @@
 package com.clinica.personal.service;
 
+import com.clinica.personal.client.AuditoriaClient;
 import com.clinica.personal.dto.*;
 import com.clinica.personal.model.Personal;
 import com.clinica.personal.model.PersonalMedico;
@@ -7,23 +8,30 @@ import com.clinica.personal.model.TipoPersonal;
 import com.clinica.personal.repository.PersonalMedicoRepository;
 import com.clinica.personal.repository.PersonalRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PersonalService {
 
+    private static final String MODULO = "PERSONAL";
+
     private final PersonalRepository personalRepository;
     private final PersonalMedicoRepository personalMedicoRepository;
     private final EspecialidadService especialidadService;
+    private final AuditoriaClient auditoriaClient;
 
     @Transactional
-    public PersonalResponseDTO registrar(PersonalRequestDTO request) {
+    public PersonalResponseDTO registrar(PersonalRequestDTO request, String authHeader) {
         if (request.getTipoPersonal() == TipoPersonal.MEDICO) {
             if (request.getNumeroColegiatura() == null || request.getNumeroColegiatura().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -55,18 +63,23 @@ public class PersonalService {
             personalMedicoRepository.save(medico);
         }
 
+        auditarAsync("CREAR_PERSONAL", "Personal", String.valueOf(saved.getId()),
+                "EXITO", null, authHeader,
+                "{\"tipoPersonal\":\"" + saved.getTipoPersonal() + "\"}");
+
         return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public PersonalResponseDTO obtenerPorId(Long id) {
-        Personal personal = findById(id);
-        return toResponse(personal);
+        return toResponse(findById(id));
     }
 
     @Transactional
-    public PersonalResponseDTO actualizar(Long id, PersonalUpdateRequestDTO request) {
+    public PersonalResponseDTO actualizar(Long id, PersonalUpdateRequestDTO request, String authHeader) {
         Personal personal = findById(id);
+        TipoPersonal tipoOriginal = personal.getTipoPersonal();
+
         if (request.getNombres()            != null) personal.setNombres(request.getNombres());
         if (request.getApellidos()          != null) personal.setApellidos(request.getApellidos());
         if (request.getDocumentoIdentidad() != null) personal.setDocumentoIdentidad(request.getDocumentoIdentidad());
@@ -75,19 +88,19 @@ public class PersonalService {
         if (request.getFechaIngreso()       != null) personal.setFechaIngreso(request.getFechaIngreso());
 
         boolean medicoHandled = false;
+        boolean cambioTipo = false;
 
         if (request.getTipoPersonal() != null) {
-            TipoPersonal nuevoTipo  = request.getTipoPersonal();
-            TipoPersonal tipoActual = personal.getTipoPersonal();
+            TipoPersonal nuevoTipo = request.getTipoPersonal();
 
-            if (tipoActual == TipoPersonal.ADMIN && nuevoTipo != TipoPersonal.ADMIN
+            if (tipoOriginal == TipoPersonal.ADMIN && nuevoTipo != TipoPersonal.ADMIN
                     && Boolean.TRUE.equals(personal.getEstadoActivo())
                     && personalRepository.countByTipoPersonalAndEstadoActivo(TipoPersonal.ADMIN, true) <= 1) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "No se puede cambiar el tipo: es el único administrador activo del sistema.");
             }
 
-            if (nuevoTipo == TipoPersonal.MEDICO && tipoActual != TipoPersonal.MEDICO) {
+            if (nuevoTipo == TipoPersonal.MEDICO && tipoOriginal != TipoPersonal.MEDICO) {
                 if (request.getNumeroColegiatura() == null || request.getNumeroColegiatura().isBlank()) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "numeroColegiatura es requerido al cambiar el tipo a MEDICO");
@@ -103,20 +116,19 @@ public class PersonalService {
                 personalMedicoRepository.save(medico);
                 medicoHandled = true;
 
-            } else if (nuevoTipo != TipoPersonal.MEDICO && tipoActual == TipoPersonal.MEDICO) {
+            } else if (nuevoTipo != TipoPersonal.MEDICO && tipoOriginal == TipoPersonal.MEDICO) {
                 personalMedicoRepository.findByPersonalId(id).ifPresent(personalMedicoRepository::delete);
                 medicoHandled = true;
             }
 
             personal.setTipoPersonal(nuevoTipo);
+            cambioTipo = nuevoTipo != tipoOriginal;
         }
 
-        // Actualizar o crear medicoInfo si sigue siendo MEDICO y se enviaron campos
         if (!medicoHandled && personal.getTipoPersonal() == TipoPersonal.MEDICO
                 && (request.getNumeroColegiatura() != null || request.getIdEspecialidad() != null)) {
             PersonalMedico medico = personalMedicoRepository.findByPersonalId(id)
                     .orElseGet(() -> {
-                        // Recuperación de estado huérfano: MEDICO sin extensión médica
                         PersonalMedico nuevo = new PersonalMedico();
                         nuevo.setPersonal(personal);
                         return nuevo;
@@ -130,7 +142,16 @@ public class PersonalService {
             personalMedicoRepository.save(medico);
         }
 
-        return toResponse(personalRepository.save(personal));
+        Personal savedPersonal = personalRepository.save(personal);
+
+        // CAMBIAR_TIPO_PERSONAL tiene prioridad sobre ACTUALIZAR_PERSONAL en caso de cambio simultáneo
+        String accion = cambioTipo ? "CAMBIAR_TIPO_PERSONAL" : "ACTUALIZAR_PERSONAL";
+        String meta = cambioTipo
+                ? "{\"tipoAnterior\":\"" + tipoOriginal + "\",\"tipoNuevo\":\"" + savedPersonal.getTipoPersonal() + "\"}"
+                : null;
+        auditarAsync(accion, "Personal", String.valueOf(id), "EXITO", null, authHeader, meta);
+
+        return toResponse(savedPersonal);
     }
 
     @Transactional(readOnly = true)
@@ -161,7 +182,8 @@ public class PersonalService {
     }
 
     @Transactional
-    public PersonalResponseDTO cambiarEstado(Long id, boolean activo, String solicitanteKeycloakUserId) {
+    public PersonalResponseDTO cambiarEstado(Long id, boolean activo,
+                                             String solicitanteKeycloakUserId, String authHeader) {
         Personal personal = findById(id);
 
         if (!activo) {
@@ -178,13 +200,17 @@ public class PersonalService {
         }
 
         personal.setEstadoActivo(activo);
-        return toResponse(personalRepository.save(personal));
+        personalRepository.save(personal);
+
+        String accion = activo ? "HABILITAR_PERSONAL" : "DESHABILITAR_PERSONAL";
+        auditarAsync(accion, "Personal", String.valueOf(id), "EXITO", null, authHeader, null);
+
+        return toResponse(personal);
     }
 
     @Transactional(readOnly = true)
     public Boolean verificarHabilitado(Long id) {
-        Personal personal = findById(id);
-        return personal.getEstadoActivo();
+        return findById(id).getEstadoActivo();
     }
 
     @Transactional(readOnly = true)
@@ -201,14 +227,11 @@ public class PersonalService {
         Personal personal = findById(id);
 
         if (personal.getTipoPersonal() != TipoPersonal.MEDICO) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "El personal con id " + id + " no es de tipo MEDICO");
         }
-
         if (personalMedicoRepository.findByPersonalId(id).isPresent()) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "El personal con id " + id + " ya tiene extensión médica registrada");
         }
 
@@ -219,6 +242,34 @@ public class PersonalService {
 
         return toMedicoResponse(personalMedicoRepository.save(medico));
     }
+
+    // ── Auditoría ────────────────────────────────────────────────────────────
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos) {
+        String cid = MDC.get("correlationId");
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado(resultado)
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .metadatos(metadatos)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
+    // ── Mapeo ────────────────────────────────────────────────────────────────
 
     private Personal findById(Long id) {
         return personalRepository.findById(id)

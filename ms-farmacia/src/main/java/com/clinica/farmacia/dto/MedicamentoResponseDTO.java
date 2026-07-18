@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 @Data
-@Schema(description = "Datos de un medicamento del catálogo, sin precio (solo visible vía ms-caja)")
+@Schema(description = "Datos de un medicamento del catálogo")
 public class MedicamentoResponseDTO {
 
     @Schema(description = "ID interno del medicamento", example = "104")
@@ -18,4 +18,7 @@ public class MedicamentoResponseDTO {
 
     @Schema(description = "Presentación", example = "Caja x 20 tabletas")
     private String presentacion;
+
+    @Schema(description = "Precio unitario en soles", example = "15.50")
+    private java.math.BigDecimal precio;
 }

@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @Tag(name = "Pago de Consulta",
         description = "Cobro previo al acto médico. Orquesta la Saga 14.1 de agendamiento+pago.")
@@ -71,8 +72,9 @@ public class PagoConsultaController {
     })
     @PostMapping
     public ResponseEntity<PagoConsultaResponseDTO> crear(
-            @Valid @RequestBody PagoConsultaRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(pagoService.crear(request));
+            @Valid @RequestBody PagoConsultaRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(pagoService.crear(request, authHeader));
     }
 
     @Operation(summary = "Confirmar pago — Saga 14.1",
@@ -90,8 +92,9 @@ public class PagoConsultaController {
     @PostMapping("/{id}/confirmar")
     public ResponseEntity<PagoConsultaResponseDTO> confirmar(
             @Parameter(description = "ID del PagoConsulta", example = "10", required = true)
-            @PathVariable Long id) {
-        return ResponseEntity.ok(pagoService.confirmarPago(id));
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(pagoService.confirmarPago(id, authHeader));
     }
 
     @Operation(summary = "Obtener la boleta del pago de consulta",

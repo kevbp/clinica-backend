@@ -1,7 +1,12 @@
 package com.clinica.atencion.exception;
 
+import com.clinica.atencion.client.AuditoriaClient;
+import com.clinica.atencion.dto.AccionAuditoriaDTO;
 import feign.FeignException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -11,13 +16,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
+@RequiredArgsConstructor
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Redis no disponible: Spring lanza RedisConnectionFailureException (RuntimeException)
+    private final AuditoriaClient auditoriaClient;
+
     @ExceptionHandler(org.springframework.data.redis.RedisConnectionFailureException.class)
     public ResponseEntity<Map<String, String>> handleRedisDown(Exception ex) {
         log.error("Redis no disponible: {}", ex.getMessage());
@@ -29,27 +37,59 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(FeignException.class)
     public ResponseEntity<Map<String, String>> handleFeign(FeignException ex) {
+        String msDestino = extraerMsDestino(ex);
+        String cid       = MDC.get("correlationId");
+        int    httpSt    = ex.status();
+        String errMsg    = ex.getMessage() != null
+                ? ex.getMessage().replace("\"", "'").substring(0, Math.min(200, ex.getMessage().length()))
+                : "sin detalle";
+
+        final String cidFinal = cid;
+        final String msFinal  = msDestino;
+        final String errFinal = errMsg;
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(AccionAuditoriaDTO.builder()
+                        .logType("ARCH_LOG")
+                        .modulo("ATENCION")
+                        .accion("SERVICE_ERR")
+                        .resultado("ERROR")
+                        .correlationId(cidFinal)
+                        .origen(msFinal)
+                        .metadatos("{\"msDestino\":\"" + msFinal
+                                + "\",\"httpStatus\":" + httpSt
+                                + ",\"error\":\"" + errFinal + "\"}")
+                        .build(), null);
+            } catch (Exception ignored) { }
+        });
+
         if (ex.status() >= 400 && ex.status() < 500) {
+            log.warn("SERVICE_ERR 4xx desde {} ({}): {}", msDestino, ex.status(), ex.getMessage());
             HttpStatus status = HttpStatus.resolve(ex.status());
             return ResponseEntity.status(status != null ? status : HttpStatus.BAD_REQUEST)
                     .body(Map.of("mensaje", ex.contentUTF8().isBlank()
-                            ? "Error en la validación con el servicio dependiente."
+                            ? "Error en la validacion con el servicio dependiente."
                             : ex.contentUTF8()));
         }
-        log.error("Dependencia no disponible (status={}): {}", ex.status(), ex.getMessage());
+        log.error("SERVICE_ERR 5xx desde {} ({}): {}", msDestino, ex.status(), ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(Map.of("mensaje",
-                        "Un servicio del que depende esta operación no se encuentra disponible. " +
-                        "Intente nuevamente más tarde."));
+                        "Un servicio del que depende esta operacion no se encuentra disponible. " +
+                        "Intente nuevamente mas tarde."));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Violacion de restriccion: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("mensaje", "Ya existe un registro con los mismos datos unicos."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errores = ex.getBindingResult().getFieldErrors().stream()
-                .collect(Collectors.toMap(
-                        FieldError::getField,
-                        fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "valor inválido"
-                ));
+                .collect(Collectors.toMap(FieldError::getField,
+                        fe -> fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "valor invalido"));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errores);
     }
 
@@ -57,9 +97,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleResponseStatus(ResponseStatusException ex) {
         log.warn("Error de negocio [{}]: {}", ex.getStatusCode(), ex.getReason());
         String mensaje = ex.getReason() != null && !ex.getReason().isBlank()
-                ? ex.getReason()
-                : "Error en la operación.";
-        return ResponseEntity.status(ex.getStatusCode())
-                .body(Map.of("mensaje", mensaje));
+                ? ex.getReason() : "Error en la operacion.";
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of("mensaje", mensaje));
+    }
+
+    private String extraerMsDestino(FeignException ex) {
+        try { return java.net.URI.create(ex.request().url()).getHost(); }
+        catch (Exception e) { return "desconocido"; }
     }
 }

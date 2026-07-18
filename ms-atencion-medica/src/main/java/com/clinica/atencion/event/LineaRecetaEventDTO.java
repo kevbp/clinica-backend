@@ -9,6 +9,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class LineaRecetaEventDTO {
     private Long    idMedicamento;
+    private String  nombreMedicamento;
+    private String  principioActivo;
+    private String  presentacion;
     private String  dosis;
     private String  viaAdministracion;
     private String  frecuencia;

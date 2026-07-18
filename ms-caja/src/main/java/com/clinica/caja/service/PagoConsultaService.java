@@ -1,7 +1,9 @@
 package com.clinica.caja.service;
 
+import com.clinica.caja.client.AuditoriaClient;
 import com.clinica.caja.client.CitasFeignClient;
 import com.clinica.caja.client.PersonalFeignClient;
+import com.clinica.caja.dto.AccionAuditoriaDTO;
 import com.clinica.caja.client.dto.EstadoCitaEnum;
 import com.clinica.caja.client.dto.EstadoCitaUpdateDTO;
 import com.clinica.caja.client.dto.PersonalDTO;
@@ -23,7 +25,10 @@ import com.clinica.caja.repository.PagoConsultaRepository;
 import com.clinica.caja.repository.TarifaConsultaRepository;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.amqp.core.MessagePostProcessor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,13 +38,16 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PagoConsultaService {
 
-    private static final int MAX_REINTENTOS_CONFIRMAR = 3;
+    private static final Logger log = LoggerFactory.getLogger(PagoConsultaService.class);
+
+    private static final int    MAX_REINTENTOS_CONFIRMAR = 3;
+    private static final String MODULO                  = "CAJA";
 
     private final PagoConsultaRepository    pagoRepository;
     private final TarifaConsultaRepository  tarifaRepository;
@@ -48,6 +56,7 @@ public class PagoConsultaService {
     private final PersonalFeignClient       personalClient;
     private final CitasFeignClient          citasClient;
     private final RabbitTemplate            rabbitTemplate;
+    private final AuditoriaClient           auditoriaClient;
 
     @Transactional(readOnly = true)
     public PagoConsultaResponseDTO obtenerPorId(Long id) {
@@ -64,7 +73,7 @@ public class PagoConsultaService {
     }
 
     @Transactional
-    public PagoConsultaResponseDTO crear(PagoConsultaRequestDTO request) {
+    public PagoConsultaResponseDTO crear(PagoConsultaRequestDTO request, String authHeader) {
         if (pagoRepository.findByIdCita(request.getIdCita()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Ya existe un pago de consulta para la cita " + request.getIdCita());
@@ -92,7 +101,13 @@ public class PagoConsultaService {
         pago.setEspecialidad(nombreEspecialidad);
         pago.setEstado(EstadoPagoConsulta.PENDIENTE);
 
-        return toResponse(pagoRepository.save(pago));
+        PagoConsulta saved = pagoRepository.save(pago);
+
+        auditarAsync("REGISTRAR_COBRO_CONSULTA", "PagoConsulta", String.valueOf(saved.getId()),
+                "EXITO", null, authHeader,
+                "{\"idCita\":" + saved.getIdCita() + ",\"idPaciente\":" + saved.getIdPaciente() + "}");
+
+        return toResponse(saved);
     }
 
     /**
@@ -101,7 +116,7 @@ public class PagoConsultaService {
      *        → compensación si falla → (3) publicar evento si todo sale bien.
      */
     @Transactional
-    public PagoConsultaResponseDTO confirmarPago(Long id) {
+    public PagoConsultaResponseDTO confirmarPago(Long id, String authHeader) {
         PagoConsulta pago = pagoRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "PagoConsulta no encontrado con id: " + id));
@@ -114,6 +129,11 @@ public class PagoConsultaService {
         // Paso 3 (sagas.md §14.1): marcar PAGADO — ya irreversible en este punto
         pago.setEstado(EstadoPagoConsulta.PAGADO);
         pagoRepository.save(pago);
+        long tPago = System.currentTimeMillis();
+
+        auditarAsync("CONFIRMAR_PAGO_CONSULTA", "PagoConsulta", String.valueOf(pago.getId()),
+                "EXITO", "PagoConsultaConfirmado", authHeader,
+                "{\"idCita\":" + pago.getIdCita() + ",\"idPaciente\":" + pago.getIdPaciente() + "}", tPago);
 
         // Paso 4: llamar síncronamente a ms-citas con reintento acotado
         boolean confirmada = intentarConfirmarCita(pago.getIdCita());
@@ -131,6 +151,10 @@ public class PagoConsultaService {
             }
             return toResponse(pago);
         }
+
+        auditarAsync("CONFIRMAR_CITA", "CitaMedica", String.valueOf(pago.getIdCita()),
+                "EXITO", null, authHeader,
+                "{\"idPaciente\":" + pago.getIdPaciente() + "}");
 
         // Boleta automática: el monto real cobrado es monto - crédito aplicado
         BigDecimal credito = pago.getMontoCreditoAplicado() != null ? pago.getMontoCreditoAplicado() : BigDecimal.ZERO;
@@ -155,6 +179,10 @@ public class PagoConsultaService {
         comprobanteRepository.save(comprobante);
         log.info("Boleta {} emitida para pago de consulta id={}", comprobante.getNumero(), pago.getId());
 
+        auditarAsync("EMITIR_COMPROBANTE", "Comprobante", String.valueOf(comprobante.getId()),
+                "EXITO", null, authHeader,
+                "{\"numero\":\"" + comprobante.getNumero() + "\",\"idCita\":" + pago.getIdCita() + "}");
+
         // Publicar PagoConsultaConfirmado hacia RabbitMQ (ms-notificaciones escucha)
         PagoConsultaConfirmadoEvent evento = new PagoConsultaConfirmadoEvent(
                 pago.getIdCita(), pago.getIdPaciente(), pago.getMonto(),
@@ -162,13 +190,86 @@ public class PagoConsultaService {
                 comprobante.getNumero(), comprobante.getSubtotal(), comprobante.getIgv(),
                 comprobante.getMontoTotal(), comprobante.getDescuento(), comprobante.getConceptoDescuento(),
                 fechaEmision, pago.getEspecialidad());
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.EXCHANGE_CAJA,
-                RabbitMQConfig.ROUTING_KEY_PAGO_CONFIRMADO,
-                evento);
-        log.info("Saga 14.1 completada: cita={} CONFIRMADA, evento PagoConsultaConfirmado publicado", pago.getIdCita());
+        try {
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.EXCHANGE_CAJA,
+                    RabbitMQConfig.ROUTING_KEY_PAGO_CONFIRMADO,
+                    evento, withCorrelationId());
+            log.info("Saga 14.1 completada: cita={} CONFIRMADA, evento PagoConsultaConfirmado publicado", pago.getIdCita());
+            auditarAsync("MSG_ENCOLADO", "PagoConsultaConfirmado", String.valueOf(pago.getId()),
+                    "EXITO", RabbitMQConfig.ROUTING_KEY_PAGO_CONFIRMADO, authHeader, null);
+        } catch (Exception ex) {
+            log.error("Error al publicar PagoConsultaConfirmado para pago={}: {}", pago.getId(), ex.getMessage());
+            auditarAsyncError("MSG_ERROR_ENCOLAR", "PagoConsultaConfirmado", String.valueOf(pago.getId()),
+                    RabbitMQConfig.ROUTING_KEY_PAGO_CONFIRMADO, authHeader, ex.getMessage());
+        }
 
         return toResponse(pago);
+    }
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos) {
+        auditarAsync(accion, entidadTipo, entidadId, resultado, disparaEvento, authHeader, metadatos,
+                     System.currentTimeMillis());
+    }
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos, long timestampMs) {
+        String cid = MDC.get("correlationId");
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado(resultado)
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .metadatos(metadatos)
+                                .timestamp(timestampMs)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
+    private void auditarAsyncError(String accion, String entidadTipo, String entidadId,
+                                   String disparaEvento, String authHeader, String errorDetalle) {
+        String cid = MDC.get("correlationId");
+        long ts = System.currentTimeMillis();
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado("ERROR")
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .errorDetalle(errorDetalle)
+                                .timestamp(ts)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
+    private MessagePostProcessor withCorrelationId() {
+        String cid = MDC.get("correlationId");
+        return msg -> {
+            if (cid != null) msg.getMessageProperties().setCorrelationId(cid);
+            return msg;
+        };
     }
 
     @Transactional(readOnly = true)
@@ -189,6 +290,12 @@ public class PagoConsultaService {
         dto.setMontoTotal(c.getMontoTotal());
         dto.setFechaEmision(c.getFechaEmision());
         dto.setNumero(c.getNumero());
+        dto.setIdCita(c.getIdCita());
+        dto.setEspecialidad(c.getEspecialidad());
+        dto.setDescuento(c.getDescuento());
+        dto.setConceptoDescuento(c.getConceptoDescuento());
+        dto.setIdReceta(c.getIdReceta());
+        dto.setIdOrden(c.getIdOrden());
         return dto;
     }
 

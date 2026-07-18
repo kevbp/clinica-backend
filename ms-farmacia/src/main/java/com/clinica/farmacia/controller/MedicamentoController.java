@@ -2,6 +2,7 @@ package com.clinica.farmacia.controller;
 
 import com.clinica.farmacia.dto.*;
 import com.clinica.farmacia.service.MedicamentoService;
+import java.time.LocalDate;
 import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -34,6 +35,42 @@ public class MedicamentoController {
             @Parameter(description = "Término de búsqueda: nombre o principio activo", example = "Amoxicilina")
             @RequestParam(required = false) String q) {
         return ResponseEntity.ok(medicamentoService.listarCatalogo(q));
+    }
+
+    @Operation(summary = "Listar catálogo con stock por lote",
+            description = "Igual que GET /medicamentos pero incluye stockTotal y detalle de lotes por cada medicamento. Filtrable por q.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista con stock")
+    })
+    @GetMapping("/con-stock")
+    public ResponseEntity<List<MedicamentoConStockResponseDTO>> listarConStock(
+            @Parameter(description = "Término de búsqueda", example = "Amoxicilina")
+            @RequestParam(required = false) String q) {
+        return ResponseEntity.ok(medicamentoService.listarConStock(q));
+    }
+
+    @Operation(summary = "Medicamentos con stock bajo",
+            description = "Medicamentos cuyo stock vigente total es menor o igual al umbral dado. Umbral por defecto: 10.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de medicamentos con stock bajo")
+    })
+    @GetMapping("/stock-bajo")
+    public ResponseEntity<List<MedicamentoConStockResponseDTO>> stockBajo(
+            @Parameter(description = "Umbral máximo de stock", example = "10")
+            @RequestParam(defaultValue = "10") int umbral) {
+        return ResponseEntity.ok(medicamentoService.listarStockBajo(umbral));
+    }
+
+    @Operation(summary = "Lotes próximos a vencer",
+            description = "Lotes con stock > 0 cuya fecha de vencimiento es en los próximos N días. Por defecto 30 días.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de lotes próximos a vencer")
+    })
+    @GetMapping("/proximos-vencer")
+    public ResponseEntity<List<LoteResponseDTO>> proximosAVencer(
+            @Parameter(description = "Número de días hacia adelante", example = "30")
+            @RequestParam(defaultValue = "30") int dias) {
+        return ResponseEntity.ok(medicamentoService.listarProximosAVencer(dias));
     }
 
     @Operation(summary = "Registrar medicamento",
@@ -138,6 +175,21 @@ public class MedicamentoController {
                 .body(medicamentoService.agregarLote(id, request));
     }
 
+    @Operation(summary = "Actualizar lote",
+            description = "Actualización parcial del lote: número, fecha de vencimiento y/o cantidad disponible.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lote actualizado"),
+            @ApiResponse(responseCode = "404", description = "Lote o medicamento no encontrado"),
+            @ApiResponse(responseCode = "400", description = "El lote no pertenece al medicamento indicado")
+    })
+    @PatchMapping("/{id}/lotes/{idLote}")
+    public ResponseEntity<LoteResponseDTO> actualizarLote(
+            @Parameter(description = "ID interno del medicamento", required = true) @PathVariable Long id,
+            @Parameter(description = "ID interno del lote", required = true) @PathVariable Long idLote,
+            @RequestBody LoteUpdateRequestDTO request) {
+        return ResponseEntity.ok(medicamentoService.actualizarLote(id, idLote, request));
+    }
+
     @Operation(summary = "Descontar stock (FEFO)",
             description = "Efecto de escritura real sobre el inventario. Invocado ÚNICAMENTE por ms-caja " +
                           "al confirmar el pago de ese ítem. Aplica FEFO (lote con vencimiento más próximo primero). " +
@@ -155,5 +207,23 @@ public class MedicamentoController {
             @PathVariable Long id,
             @Valid @RequestBody DescontarStockRequestDTO request) {
         return ResponseEntity.ok(medicamentoService.descontarStock(id, request));
+    }
+
+    @Operation(summary = "Kardex de movimientos de inventario",
+            description = "Lista el historial de movimientos (ENTRADA, SALIDA, AJUSTE) de un medicamento, ordenado de más reciente a más antiguo. " +
+                          "Opcionalmente filtrado por rango de fechas.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de movimientos"),
+            @ApiResponse(responseCode = "404", description = "Medicamento no encontrado")
+    })
+    @GetMapping("/{id}/kardex")
+    public ResponseEntity<List<KardexResponseDTO>> listarKardex(
+            @Parameter(description = "ID interno del medicamento", required = true)
+            @PathVariable Long id,
+            @Parameter(description = "Fecha de inicio del filtro (YYYY-MM-DD)")
+            @RequestParam(required = false) LocalDate desde,
+            @Parameter(description = "Fecha de fin del filtro (YYYY-MM-DD)")
+            @RequestParam(required = false) LocalDate hasta) {
+        return ResponseEntity.ok(medicamentoService.listarKardex(id, desde, hasta));
     }
 }

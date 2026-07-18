@@ -23,7 +23,7 @@ public class ComprobanteResponseDTO {
     @Schema(description = "Base imponible sin IGV (montoTotal / 1.18, redondeado)", example = "453.39")
     private BigDecimal subtotal;
 
-    @Schema(description = "IGV (18%) = montoTotal − subtotal", example = "81.61")
+    @Schema(description = "IGV (18%) = montoTotal - subtotal", example = "81.61")
     private BigDecimal igv;
 
     @Schema(description = "Monto total efectivamente cobrado (incluye IGV)", example = "535.00")
@@ -40,9 +40,16 @@ public class ComprobanteResponseDTO {
 
     @Schema(description = "Especialidad médica (solo CONSULTA)", example = "Medicina General")
     private String especialidad;
+
     @Schema(description = "Monto descontado aplicado (ej. nota de credito). Null si no hay descuento.", example = "10.00")
     private BigDecimal descuento;
 
     @Schema(description = "Concepto del descuento", example = "Nota de Credito NC-20260703-00001")
     private String conceptoDescuento;
+
+    @Schema(description = "ID de la receta clínica que originó la proforma (solo PROFORMA tipo MEDICAMENTOS)", example = "6830a1b2e4b0f23c4d1e5f67")
+    private String idReceta;
+
+    @Schema(description = "ID de la orden de laboratorio que originó la proforma (solo PROFORMA tipo EXAMENES)", example = "6830a1b2e4b0f23c4d1e5f68")
+    private String idOrden;
 }

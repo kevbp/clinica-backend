@@ -1,6 +1,9 @@
 server:
   port: 8080
 
+auditoria:
+  url: http://localhost:8091
+
 spring:
   cloud:
     gateway:
@@ -95,6 +98,10 @@ spring:
               uri: lb://ms-notificaciones
               predicates:
                 - Path=/notificaciones/**
+            - id: ms-auditoria
+              uri: lb://ms-auditoria
+              predicates:
+                - Path=/auditoria/**
   security:
     oauth2:
       resourceserver:

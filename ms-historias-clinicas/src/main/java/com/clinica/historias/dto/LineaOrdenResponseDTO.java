@@ -10,6 +10,12 @@ public class LineaOrdenResponseDTO {
     @Schema(description = "ID del examen en ms-laboratorio", example = "12")
     private Long idExamen;
 
+    @Schema(description = "Nombre del examen", example = "Hemograma completo")
+    private String nombreExamen;
+
+    @Schema(description = "Categoría del examen", example = "Hematología")
+    private String categoria;
+
     @Schema(description = "Indicaciones de preparación", example = "Ayuno de 8 horas")
     private String indicacionesPreparacion;
 }

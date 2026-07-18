@@ -1,0 +1,10 @@
+# Overrides aplicados a todos los microservicios cuando corren en Docker.
+# El perfil 'docker' se activa mediante SPRING_PROFILES_ACTIVE=docker en docker-compose.
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+
+spring:
+  rabbitmq:
+    host: rabbitmq-clinica

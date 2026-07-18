@@ -10,6 +10,15 @@ public class LineaRecetaResponseDTO {
     @Schema(description = "ID del medicamento en ms-farmacia", example = "104")
     private Long idMedicamento;
 
+    @Schema(description = "Nombre comercial del medicamento", example = "Amoxicilina 500mg")
+    private String nombreMedicamento;
+
+    @Schema(description = "Principio activo", example = "Amoxicilina")
+    private String principioActivo;
+
+    @Schema(description = "Presentación", example = "Cápsula")
+    private String presentacion;
+
     @Schema(description = "Dosis por toma", example = "500 mg")
     private String dosis;
 

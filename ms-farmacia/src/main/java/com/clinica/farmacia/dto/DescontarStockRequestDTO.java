@@ -14,4 +14,7 @@ public class DescontarStockRequestDTO {
     @Schema(description = "Cantidad de unidades a descontar", example = "2",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer cantidad;
+
+    @Schema(description = "Referencia del documento origen (ej. número de proforma)", example = "PRF-20260709-00001")
+    private String referencia;
 }

@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.List;
 
@@ -49,7 +50,8 @@ public class EpisodioController {
     public ResponseEntity<EpisodioCompletoResponseDTO> obtenerCompleto(
             @Parameter(description = "ObjectId MongoDB del episodio",
                     example = "64a1f3b2e4b0c72a9d8e1f0a", required = true)
-            @PathVariable String id) {
-        return ResponseEntity.ok(service.obtenerCompleto(id));
+            @PathVariable String id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(service.obtenerCompleto(id, authHeader));
     }
 }

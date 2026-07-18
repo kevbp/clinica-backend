@@ -12,9 +12,10 @@ import java.util.List;
 @NoArgsConstructor
 public class BorradorAtencion {
 
-    private Long idCita;
-    private Long idPaciente;
-    private Long idPersonalMedico;
+    private Long   idCita;
+    private Long   idPaciente;
+    private Long   idPersonalMedico;
+    private String sesionCorrelationId;
 
     // S — Subjetivo
     private String motivoConsulta;

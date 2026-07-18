@@ -26,32 +26,26 @@ public class EspecialidadController {
 
     private final EspecialidadService especialidadService;
 
-    @Operation(summary = "Crear especialidad", description = "Agrega una nueva especialidad al catálogo")
+    @Operation(summary = "Crear especialidad")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Especialidad creada",
                     content = @Content(schema = @Schema(implementation = EspecialidadResponseDTO.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos")
     })
     @PostMapping
-    public ResponseEntity<EspecialidadResponseDTO> crear(@Valid @RequestBody EspecialidadRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(especialidadService.crear(request));
+    public ResponseEntity<EspecialidadResponseDTO> crear(
+            @Valid @RequestBody EspecialidadRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(especialidadService.crear(request, authHeader));
     }
 
-    @Operation(summary = "Listar especialidades", description = "Retorna todas las especialidades del catálogo")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de especialidades")
-    })
+    @Operation(summary = "Listar especialidades")
     @GetMapping
     public ResponseEntity<List<EspecialidadResponseDTO>> listar() {
         return ResponseEntity.ok(especialidadService.listar());
     }
 
-    @Operation(summary = "Consultar especialidad por ID", description = "Retorna el detalle de una especialidad")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Especialidad encontrada",
-                    content = @Content(schema = @Schema(implementation = EspecialidadResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Especialidad no encontrada")
-    })
+    @Operation(summary = "Consultar especialidad por ID")
     @GetMapping("/{id}")
     public ResponseEntity<EspecialidadResponseDTO> obtenerPorId(
             @Parameter(description = "ID de la especialidad", example = "1", required = true)
@@ -59,23 +53,17 @@ public class EspecialidadController {
         return ResponseEntity.ok(especialidadService.obtenerPorId(id));
     }
 
-    @Operation(summary = "Actualizar especialidad", description = "Modifica el nombre o descripción de una especialidad")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Especialidad actualizada",
-                    content = @Content(schema = @Schema(implementation = EspecialidadResponseDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
-            @ApiResponse(responseCode = "404", description = "Especialidad no encontrada")
-    })
+    @Operation(summary = "Actualizar especialidad")
     @PatchMapping("/{id}")
     public ResponseEntity<EspecialidadResponseDTO> actualizar(
-            @Parameter(description = "ID de la especialidad", example = "1", required = true)
             @PathVariable Long id,
-            @RequestBody EspecialidadRequestDTO request) {
-        return ResponseEntity.ok(especialidadService.actualizar(id, request));
+            @RequestBody EspecialidadRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(especialidadService.actualizar(id, request, authHeader));
     }
 
     @Operation(summary = "Eliminar especialidad",
-            description = "Elimina una especialidad del catálogo. Falla con 409 si hay médicos asignados.")
+            description = "Falla con 409 si hay médicos asignados.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Especialidad eliminada"),
             @ApiResponse(responseCode = "404", description = "Especialidad no encontrada"),
@@ -83,9 +71,9 @@ public class EspecialidadController {
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(
-            @Parameter(description = "ID de la especialidad", example = "1", required = true)
-            @PathVariable Long id) {
-        especialidadService.eliminar(id);
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        especialidadService.eliminar(id, authHeader);
         return ResponseEntity.noContent().build();
     }
 }

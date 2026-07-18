@@ -1,10 +1,13 @@
 package com.clinica.historias.service;
 
+import com.clinica.historias.client.AuditoriaClient;
 import com.clinica.historias.dto.*;
 import com.clinica.historias.event.dto.EpisodioFinalizadoEvent;
 import com.clinica.historias.model.*;
 import com.clinica.historias.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -13,10 +16,14 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HistoriasClinicasService {
+
+    private static final String MODULO = "HISTORIAS_CLINICAS";
 
     private final MongoTemplate mongoTemplate;
     private final HistoriaClinicaRepository historiaRepository;
@@ -24,6 +31,7 @@ public class HistoriasClinicasService {
     private final RecetaRepository recetaRepository;
     private final OrdenLaboratorioRepository ordenRepository;
     private final AdendaClinicoRepository adendaRepository;
+    private final AuditoriaClient auditoriaClient;
 
     // --- Procesamiento del evento RabbitMQ ---
 
@@ -89,9 +97,15 @@ public class HistoriasClinicasService {
             receta.setIdEpisodioClinico(guardado.getIdEpisodio());
             receta.setIdPaciente(event.getIdPaciente());
             receta.setIdPersonalMedico(event.getIdPersonalMedico());
+            receta.setFechaEmision(guardado.getFechaAtencion());
+            receta.setPaciente(guardado.getPaciente());
+            receta.setMedico(guardado.getMedico());
             receta.setLineas(event.getReceta().getLineas().stream().map(l -> {
                 LineaReceta lr = new LineaReceta();
                 lr.setIdMedicamento(l.getIdMedicamento());
+                lr.setNombreMedicamento(l.getNombreMedicamento());
+                lr.setPrincipioActivo(l.getPrincipioActivo());
+                lr.setPresentacion(l.getPresentacion());
                 lr.setDosis(l.getDosis());
                 lr.setViaAdministracion(l.getViaAdministracion());
                 lr.setFrecuencia(l.getFrecuencia());
@@ -108,9 +122,14 @@ public class HistoriasClinicasService {
             orden.setIdEpisodioClinico(guardado.getIdEpisodio());
             orden.setIdPaciente(event.getIdPaciente());
             orden.setIdPersonalMedico(event.getIdPersonalMedico());
+            orden.setFechaEmision(guardado.getFechaAtencion());
+            orden.setPaciente(guardado.getPaciente());
+            orden.setMedico(guardado.getMedico());
             orden.setLineas(event.getOrdenLaboratorio().getLineas().stream().map(l -> {
                 LineaOrden lo = new LineaOrden();
                 lo.setIdExamen(l.getIdExamen());
+                lo.setNombreExamen(l.getNombreExamen());
+                lo.setCategoria(l.getCategoria());
                 lo.setIndicacionesPreparacion(l.getIndicacionesPreparacion());
                 return lo;
             }).toList());
@@ -146,7 +165,7 @@ public class HistoriasClinicasService {
                 .map(this::toEpisodioResponse).toList();
     }
 
-    public EpisodioCompletoResponseDTO obtenerCompleto(String id) {
+    public EpisodioCompletoResponseDTO obtenerCompleto(String id, String authHeader) {
         EpisodioClinico episodio = episodioRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Episodio clínico no encontrado con id: " + id));
@@ -220,6 +239,32 @@ public class HistoriasClinicasService {
         return toAdendaResponse(adendaRepository.save(adenda));
     }
 
+    // --- Auditoría ---
+
+    private void auditarAsync(String accion, String entidadTipo, String entidadId,
+                               String resultado, String disparaEvento,
+                               String authHeader, String metadatos) {
+        String cid = MDC.get("correlationId");
+        CompletableFuture.runAsync(() -> {
+            try {
+                auditoriaClient.registrar(
+                        AccionAuditoriaDTO.builder()
+                                .modulo(MODULO)
+                                .accion(accion)
+                                .entidadTipo(entidadTipo)
+                                .entidadId(entidadId)
+                                .resultado(resultado)
+                                .correlationId(cid)
+                                .disparaEvento(disparaEvento)
+                                .metadatos(metadatos)
+                                .build(),
+                        authHeader);
+            } catch (Exception e) {
+                log.warn("ACTION_LOG no registrado [{}/{}]: {}", accion, entidadId, e.getMessage());
+            }
+        });
+    }
+
     // --- Mappers ---
 
     private EpisodioClinicoResponseDTO toEpisodioResponse(EpisodioClinico e) {
@@ -253,10 +298,16 @@ public class HistoriasClinicasService {
         dto.setIdEpisodioClinico(r.getIdEpisodioClinico());
         dto.setIdPaciente(r.getIdPaciente());
         dto.setIdPersonalMedico(r.getIdPersonalMedico());
+        dto.setFechaEmision(r.getFechaEmision());
+        dto.setPaciente(r.getPaciente());
+        dto.setMedico(r.getMedico());
         dto.setLineas(r.getLineas() == null ? Collections.emptyList() :
                 r.getLineas().stream().map(l -> {
                     LineaRecetaResponseDTO ld = new LineaRecetaResponseDTO();
                     ld.setIdMedicamento(l.getIdMedicamento());
+                    ld.setNombreMedicamento(l.getNombreMedicamento());
+                    ld.setPrincipioActivo(l.getPrincipioActivo());
+                    ld.setPresentacion(l.getPresentacion());
                     ld.setDosis(l.getDosis());
                     ld.setViaAdministracion(l.getViaAdministracion());
                     ld.setFrecuencia(l.getFrecuencia());
@@ -274,10 +325,15 @@ public class HistoriasClinicasService {
         dto.setIdEpisodioClinico(o.getIdEpisodioClinico());
         dto.setIdPaciente(o.getIdPaciente());
         dto.setIdPersonalMedico(o.getIdPersonalMedico());
+        dto.setFechaEmision(o.getFechaEmision());
+        dto.setPaciente(o.getPaciente());
+        dto.setMedico(o.getMedico());
         dto.setLineas(o.getLineas() == null ? Collections.emptyList() :
                 o.getLineas().stream().map(l -> {
                     LineaOrdenResponseDTO ld = new LineaOrdenResponseDTO();
                     ld.setIdExamen(l.getIdExamen());
+                    ld.setNombreExamen(l.getNombreExamen());
+                    ld.setCategoria(l.getCategoria());
                     ld.setIndicacionesPreparacion(l.getIndicacionesPreparacion());
                     return ld;
                 }).toList());

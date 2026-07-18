@@ -16,7 +16,7 @@ public class NotaCreditoRequestDTO {
     private Long idCita;
 
     @NotBlank
-    @Schema(description = "Motivo de la cancelación", example = "Cancelación con anticipación ≥ 24h",
+    @Schema(description = "Motivo de la cancelación", example = "Cancelación con anticipación >= 24h",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String motivo;
 

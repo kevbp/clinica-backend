@@ -64,8 +64,9 @@ public class NotaCreditoController {
     @PostMapping("/{id}/enviar-correo")
     public ResponseEntity<Void> enviarPorCorreo(
             @PathVariable Long id,
-            @Valid @RequestBody EnviarCorreoRequestDTO request) {
-        notaCreditoService.enviarPorCorreo(id, request.getCorreo());
+            @Valid @RequestBody EnviarCorreoRequestDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+        notaCreditoService.enviarPorCorreo(id, request.getCorreo(), authHeader);
         return ResponseEntity.noContent().build();
     }
 }

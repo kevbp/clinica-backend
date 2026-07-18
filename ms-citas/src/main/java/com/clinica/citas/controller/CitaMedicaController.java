@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -102,8 +103,10 @@ public class CitaMedicaController {
             @ApiResponse(responseCode = "502", description = "Dependencia (ms-personal / ms-pacientes / ms-horarios) no disponible")
     })
     @PostMapping
-    public ResponseEntity<CitaMedicaResponseDTO> crear(@Valid @RequestBody CitaMedicaRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(citaService.crear(request));
+    public ResponseEntity<CitaMedicaResponseDTO> crear(
+            @Valid @RequestBody CitaMedicaRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(citaService.crear(request, authHeader));
     }
 
     @Operation(summary = "Cambiar estado de la cita",
@@ -133,8 +136,9 @@ public class CitaMedicaController {
     @DeleteMapping("/{id}")
     public ResponseEntity<CitaMedicaResponseDTO> cancelarPendientePago(
             @Parameter(description = "ID de la cita", example = "100", required = true)
-            @PathVariable Long id) {
-        return ResponseEntity.ok(citaService.cancelarPendientePago(id));
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(citaService.cancelarPendientePago(id, authHeader));
     }
 
     @Operation(summary = "Cancelar cita CONFIRMADA (por el paciente)",
@@ -152,8 +156,9 @@ public class CitaMedicaController {
     @PostMapping("/{id}/cancelar-confirmada")
     public ResponseEntity<CitaMedicaResponseDTO> cancelarConfirmada(
             @Parameter(description = "ID de la cita", example = "100", required = true)
-            @PathVariable Long id) {
-        return ResponseEntity.ok(citaService.cancelarConfirmada(id));
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(citaService.cancelarConfirmada(id, authHeader));
     }
 
     @Operation(summary = "Cancelar cita CONFIRMADA por parte de la clínica",
@@ -169,8 +174,9 @@ public class CitaMedicaController {
     @PostMapping("/{id}/cancelar-por-clinica")
     public ResponseEntity<CitaMedicaResponseDTO> cancelarPorClinica(
             @Parameter(description = "ID de la cita", example = "100", required = true)
-            @PathVariable Long id) {
-        return ResponseEntity.ok(citaService.cancelarPorClinica(id));
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(citaService.cancelarPorClinica(id, authHeader));
     }
 
     @Operation(summary = "Reagendar cita",
@@ -189,8 +195,9 @@ public class CitaMedicaController {
     public ResponseEntity<CitaMedicaResponseDTO> reagendar(
             @Parameter(description = "ID de la cita", example = "100", required = true)
             @PathVariable Long id,
-            @Valid @RequestBody ReagendarRequestDTO request) {
-        return ResponseEntity.ok(citaService.reagendar(id, request));
+            @Valid @RequestBody ReagendarRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(citaService.reagendar(id, request, authHeader));
     }
 
     @Operation(summary = "Compensación de Saga — pago fallido",

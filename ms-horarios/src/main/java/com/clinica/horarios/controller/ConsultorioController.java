@@ -27,8 +27,7 @@ public class ConsultorioController {
 
     private final ConsultorioService consultorioService;
 
-    @Operation(summary = "Registrar consultorio",
-            description = "Agrega un nuevo consultorio físico al sistema")
+    @Operation(summary = "Registrar consultorio")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Consultorio registrado",
                     content = @Content(schema = @Schema(implementation = ConsultorioResponseDTO.class))),
@@ -36,21 +35,18 @@ public class ConsultorioController {
     })
     @PostMapping
     public ResponseEntity<ConsultorioResponseDTO> crear(
-            @Valid @RequestBody ConsultorioRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(consultorioService.crear(request));
+            @Valid @RequestBody ConsultorioRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(consultorioService.crear(request, authHeader));
     }
 
-    @Operation(summary = "Listar consultorios", description = "Retorna todos los consultorios registrados")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lista de consultorios")
-    })
+    @Operation(summary = "Listar consultorios")
     @GetMapping
     public ResponseEntity<List<ConsultorioResponseDTO>> listar() {
         return ResponseEntity.ok(consultorioService.listar());
     }
 
-    @Operation(summary = "Consultar consultorio por ID",
-            description = "Retorna los datos de un consultorio físico")
+    @Operation(summary = "Consultar consultorio por ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Consultorio encontrado",
                     content = @Content(schema = @Schema(implementation = ConsultorioResponseDTO.class))),
@@ -63,8 +59,7 @@ public class ConsultorioController {
         return ResponseEntity.ok(consultorioService.obtenerPorId(id));
     }
 
-    @Operation(summary = "Actualizar consultorio",
-            description = "Actualización parcial. Solo se modifican los campos presentes en el body (no nulos).")
+    @Operation(summary = "Actualizar consultorio")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Consultorio actualizado",
                     content = @Content(schema = @Schema(implementation = ConsultorioResponseDTO.class))),
@@ -74,12 +69,13 @@ public class ConsultorioController {
     public ResponseEntity<ConsultorioResponseDTO> actualizar(
             @Parameter(description = "ID interno del consultorio", example = "1", required = true)
             @PathVariable Long id,
-            @RequestBody ConsultorioUpdateRequestDTO request) {
-        return ResponseEntity.ok(consultorioService.actualizar(id, request));
+            @RequestBody ConsultorioUpdateRequestDTO request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return ResponseEntity.ok(consultorioService.actualizar(id, request, authHeader));
     }
 
     @Operation(summary = "Eliminar consultorio",
-            description = "Elimina un consultorio físico. Falla con 409 si tiene turnos de programación asignados.")
+            description = "Falla con 409 si tiene turnos de programación asignados.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Consultorio eliminado"),
             @ApiResponse(responseCode = "404", description = "Consultorio no encontrado"),
@@ -88,8 +84,9 @@ public class ConsultorioController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(
             @Parameter(description = "ID interno del consultorio", example = "1", required = true)
-            @PathVariable Long id) {
-        consultorioService.eliminar(id);
+            @PathVariable Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        consultorioService.eliminar(id, authHeader);
         return ResponseEntity.noContent().build();
     }
 }

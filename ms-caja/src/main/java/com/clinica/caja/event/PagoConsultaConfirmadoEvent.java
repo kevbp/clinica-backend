@@ -16,7 +16,6 @@ public class PagoConsultaConfirmadoEvent {
     private BigDecimal monto;
     private String correoPaciente;
     private String nombrePaciente;
-    // Datos de la boleta para el email automatico
     private String numeroBoleta;
     private BigDecimal subtotal;
     private BigDecimal igv;

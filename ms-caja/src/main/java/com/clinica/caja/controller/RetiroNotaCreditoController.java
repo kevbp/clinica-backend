@@ -40,8 +40,9 @@ public class RetiroNotaCreditoController {
     public ResponseEntity<RetiroResponseDTO> solicitar(
             @Parameter(description = "ID del paciente", required = true)
             @RequestParam Long idPaciente,
-            @Valid @RequestBody RetiroRequestDTO request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(retiroService.solicitarRetiro(idPaciente, request));
+            @Valid @RequestBody RetiroRequestDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(retiroService.solicitarRetiro(idPaciente, request, authHeader));
     }
 
     @Operation(summary = "Listar retiros de un paciente")

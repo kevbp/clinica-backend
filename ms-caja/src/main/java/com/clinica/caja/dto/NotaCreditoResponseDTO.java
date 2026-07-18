@@ -23,16 +23,16 @@ public class NotaCreditoResponseDTO {
     @Schema(description = "Tipo de nota de crédito (determina el porcentaje devuelto)", example = "CANCELACION_ANTICIPADA")
     private TipoNotaCredito tipo;
 
-    @Schema(description = "Monto devuelto al paciente (70 % o 100 % según tipo)", example = "80.00")
+    @Schema(description = "Monto devuelto al paciente (70% o 100% según tipo)", example = "80.00")
     private BigDecimal monto;
 
-    @Schema(description = "Monto retenido como penalidad (30 % en cancelación tardía / no-show; 0 en los demás)", example = "34.20")
+    @Schema(description = "Monto retenido como penalidad (30% en cancelación tardía / no-show; 0 en los demás)", example = "34.20")
     private BigDecimal montoRetenido;
 
     @Schema(description = "ID del pago de consulta original", example = "10")
     private Long idPagoConsultaOrigen;
 
-    @Schema(description = "Motivo", example = "Cancelación con anticipación ≥ 24h")
+    @Schema(description = "Motivo", example = "Cancelación con anticipación >= 24h")
     private String motivo;
 
     @Schema(description = "Estado de la nota de crédito", example = "DISPONIBLE")

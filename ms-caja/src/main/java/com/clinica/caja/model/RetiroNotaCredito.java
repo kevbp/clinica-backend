@@ -17,14 +17,12 @@ public class RetiroNotaCredito {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** La NC que se está retirando — se marca USADA al crear el retiro. */
     @Column(name = "id_nota_credito", nullable = false, unique = true)
     private Long idNotaCredito;
 
     @Column(name = "id_paciente", nullable = false)
     private Long idPaciente;
 
-    /** Monto de la NC (readonly — se copia de la NC para trazabilidad). */
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal monto;
 
